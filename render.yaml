@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: podcast-agent
+    runtime: docker
+    plan: free  # Change to 'starter' or higher for production
+    region: oregon  # Change to your preferred region
+    branch: main  # Git branch to deploy from
+
+    # Docker configuration
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./
+
+    # Environment variables
+    # Set these in Render Dashboard under Environment tab
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false  # Set manually in dashboard
+
+      - key: LLAMA_API_KEY
+        sync: false  # Set manually in dashboard
+
+      - key: TAVILY_API_KEY
+        sync: false  # Set manually in dashboard
+
+      - key: SERPER_API_KEY
+        sync: false  # Optional - set if using Serper
+
+      - key: BRAVE_API_KEY
+        sync: false  # Optional - set if using Brave
+
+      - key: LANGSMITH_TRACING
+        value: false  # Optional - set to true for debugging
+
+      - key: LANGSMITH_API_KEY
+        sync: false  # Optional - set if using LangSmith
+
+      - key: LANGSMITH_PROJECT
+        value: podcast-agent  # Optional
+
+    # Auto-deploy settings
+    autoDeploy: true  # Auto-deploy on git push
+
+    # Health check endpoint
+    healthCheckPath: /api/health
