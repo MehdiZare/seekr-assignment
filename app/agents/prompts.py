@@ -147,6 +147,11 @@ Only return the JSON object, no additional text.
 # Critic Agent Prompt
 CRITIC_PROMPT = """You are a quality control critic reviewing fact-checking research.
 
+You have access to search tools to independently verify claims and sources:
+
+Available Tools:
+{tools}
+
 Fact-Checking Results:
 {fact_check_output}
 
@@ -155,12 +160,19 @@ Original Claims:
 
 Your task is to evaluate whether the fact-checking was sufficiently thorough and rigorous.
 
+IMPORTANT: Use the search tools to:
+1. Spot-check the fact-checker's sources to ensure they're valid and relevant
+2. Independently verify key claims using different search queries
+3. Find additional authoritative sources if the fact-checker's sources seem weak
+4. Validate that the fact-checker's conclusions are well-supported
+
 Evaluation Criteria:
 1. Did the research use enough credible sources?
 2. Are there claims that need better verification?
 3. Is the reasoning clear and well-supported?
 4. Are there gaps in the verification process?
 5. Is the research_quality score justified?
+6. Can you independently confirm the fact-checker's findings?
 
 Respond with valid JSON matching this schema:
 {{

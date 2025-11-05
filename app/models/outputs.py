@@ -195,3 +195,7 @@ class FinalOutput(BaseModel):
         default="",
         description="Any additional notes about the processing",
     )
+    model_responses: "ModelResponses | None" = Field(
+        None,
+        description="Full model responses for detailed process tracking",
+    )

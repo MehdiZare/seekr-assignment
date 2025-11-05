@@ -60,6 +60,7 @@ def generate_json_output(
     final_output: FinalOutput,
     output_dir: str | Path = "output",
     filename: str | None = None,
+    include_full_process: bool = True,
 ) -> Path:
     """Generate JSON output file with analysis results.
 
@@ -67,6 +68,7 @@ def generate_json_output(
         final_output: FinalOutput object with all results
         output_dir: Directory to save the output file
         filename: Optional custom filename (defaults to timestamp-based name)
+        include_full_process: Include detailed process data (agent outputs, iterations)
 
     Returns:
         Path to the generated file
@@ -91,8 +93,16 @@ def generate_json_output(
             "main_topics": final_output.summary.main_topics if final_output.summary else [],
             "key_takeaways": final_output.summary.key_takeaways if final_output.summary else [],
             "final_summary": final_output.summary.final_summary if final_output.summary else "",
+            "notable_quotes": [
+                {
+                    "text": quote.text,
+                    "speaker": quote.speaker,
+                    "context": quote.context,
+                }
+                for quote in (final_output.summary.notable_quotes if final_output.summary else [])
+            ],
+            "claims_identified": final_output.summary.claims_to_verify if final_output.summary else [],
         },
-        "notes": final_output.processing_notes or "",
         "fact_check": {
             "overall_reliability": round(final_output.fact_check.overall_reliability, 3)
             if final_output.fact_check
@@ -102,7 +112,68 @@ def generate_json_output(
             else 0.0,
             "verified_claims": _format_fact_check_table_json(final_output.fact_check),
         },
+        "processing_notes": final_output.processing_notes or "",
     }
+
+    # Add full process details if requested
+    if include_full_process and hasattr(final_output, 'model_responses'):
+        process_details = {
+            "model_a_analysis": None,
+            "model_b_analysis": None,
+            "supervisor_consolidation": None,
+            "fact_check_iterations": [],
+            "critic_reviews": [],
+        }
+
+        model_responses = final_output.model_responses
+
+        # Model A and B outputs
+        if model_responses and model_responses.model_a:
+            process_details["model_a_analysis"] = {
+                "summary": model_responses.model_a.summary,
+                "key_points": model_responses.model_a.key_points,
+                "topics": model_responses.model_a.topics,
+                "confidence": round(model_responses.model_a.confidence, 3),
+            }
+
+        if model_responses and model_responses.model_b:
+            process_details["model_b_analysis"] = {
+                "summary": model_responses.model_b.summary,
+                "key_points": model_responses.model_b.key_points,
+                "topics": model_responses.model_b.topics,
+                "confidence": round(model_responses.model_b.confidence, 3),
+            }
+
+        # Supervisor reasoning
+        if model_responses and model_responses.supervisor:
+            process_details["supervisor_consolidation"] = {
+                "reasoning": model_responses.supervisor.reasoning,
+                "claims_to_verify": model_responses.supervisor.claims_to_verify,
+            }
+
+        # Fact-check iterations with critic feedback
+        if model_responses and model_responses.fact_check_iterations:
+            for iteration in model_responses.fact_check_iterations:
+                iteration_data = {
+                    "iteration_number": iteration.iteration,
+                    "timestamp": iteration.timestamp.isoformat(),
+                    "fact_check_result": {
+                        "overall_reliability": round(iteration.fact_check.overall_reliability, 3),
+                        "research_quality": round(iteration.fact_check.research_quality, 3),
+                        "verified_claims": _format_fact_check_table_json(iteration.fact_check),
+                        "reasoning": iteration.fact_check.reasoning,
+                    },
+                    "critic_feedback": {
+                        "quality_score": round(iteration.critic_feedback.quality_score, 3),
+                        "research_is_sufficient": iteration.critic_feedback.research_is_sufficient,
+                        "missing_verifications": iteration.critic_feedback.missing_verifications,
+                        "suggested_improvements": iteration.critic_feedback.suggested_improvements,
+                        "reasoning": iteration.critic_feedback.reasoning,
+                    },
+                }
+                process_details["fact_check_iterations"].append(iteration_data)
+
+        output_data["process_details"] = process_details
 
     # Write JSON file
     with open(file_path, "w", encoding="utf-8") as f:

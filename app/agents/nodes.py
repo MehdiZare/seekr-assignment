@@ -20,7 +20,7 @@ from app.agents.prompts import (
     PARALLEL_ANALYSIS_PROMPT,
     SUPERVISOR_PROMPT,
 )
-from app.agents.tools import create_search_tools, get_tool_descriptions
+from app.agents.tools import create_search_tools, get_tool_descriptions, validate_and_filter_search_results
 from app.config import get_config
 from app.models.outputs import (
     CriticFeedback,
@@ -541,6 +541,9 @@ def fact_checker_node(state: AgentState) -> dict:
                 # Invoke tool with error handling
                 tool_result = tool.invoke(tool_call["args"])
 
+                # Validate URLs and filter out 404s
+                tool_result = validate_and_filter_search_results(tool_result)
+
                 # Add tool result to messages
                 from langchain_core.messages import ToolMessage
 
@@ -657,12 +660,16 @@ Return ONLY the corrected JSON, no tool calls needed.
 # Critic Node
 @traceable(name="critic_quality_review")
 def critic_node(state: AgentState) -> dict:
-    """Evaluate fact-checking quality."""
+    """Evaluate fact-checking quality with independent verification."""
     logger.info("=" * 80)
 
     llm = _create_llm("model_c")  # Use Sonnet for critic too
     config = get_config()
     max_retries = config.app_settings.get("max_retries", 3)
+    tools = create_search_tools()
+
+    # Create LLM with tool binding
+    llm_with_tools = llm.bind_tools(tools)
 
     # Get model responses
     model_responses = state["model_responses"]
@@ -673,6 +680,7 @@ def critic_node(state: AgentState) -> dict:
 
     logger.info("CRITIC (Claude Sonnet) - Iteration %d/%d", current_iteration + 1, max_iterations)
     logger.info("Evaluating fact-checking quality and research thoroughness")
+    logger.info("Available search tools for independent verification: %s", ", ".join(tool.name for tool in tools))
 
     fact_check_output = model_responses.fact_check_current.model_dump_json(indent=2)
     claims = model_responses.supervisor.claims_to_verify
@@ -680,18 +688,121 @@ def critic_node(state: AgentState) -> dict:
     prompt = CRITIC_PROMPT.format(
         fact_check_output=fact_check_output,
         claims="\n".join(f"- {claim}" for claim in claims),
+        tools=get_tool_descriptions(),
     )
     messages = [HumanMessage(content=prompt)]
 
-    logger.info("Invoking Critic with validation retry (max retries: %d)", max_retries)
+    logger.info("Invoking Critic with tool access (max retries: %d)", max_retries)
 
-    # Use validation retry wrapper
-    critic_feedback = _invoke_llm_with_validation_retry(
-        llm=llm,
-        messages=messages,
-        model_class=CriticFeedback,
-        max_retries=max_retries,
-    )
+    # Execute with tool calling loop for independent verification
+    max_tool_iterations = 10
+    tool_call_count = 0
+    failed_tool_calls = 0
+
+    for i in range(max_tool_iterations):
+        response = llm_with_tools.invoke(messages)
+        messages.append(response)
+
+        # Check if there are tool calls
+        if not response.tool_calls:
+            # No more tool calls, parse final response
+            break
+
+        # Execute tool calls with error handling
+        for tool_call in response.tool_calls:
+            tool_call_count += 1
+            tool_name = tool_call.get("name", "unknown")
+
+            # Find matching tool
+            tool = next((t for t in tools if t.name == tool_name), None)
+            if not tool:
+                logger.warning(f"Tool '{tool_name}' not found in available tools")
+                failed_tool_calls += 1
+                continue
+
+            try:
+                # Invoke tool with error handling
+                tool_result = tool.invoke(tool_call["args"])
+
+                # Validate URLs and filter out 404s
+                tool_result = validate_and_filter_search_results(tool_result)
+
+                # Add tool result to messages
+                from langchain_core.messages import ToolMessage
+
+                messages.append(
+                    ToolMessage(
+                        content=str(tool_result),
+                        tool_call_id=tool_call["id"],
+                    )
+                )
+
+                result_preview = str(tool_result)[:150] + ("..." if len(str(tool_result)) > 150 else "")
+                logger.info(f"Critic executed tool '{tool_name}' (call {tool_call_count})")
+                logger.info(f"  Result preview: {result_preview}")
+
+            except Exception as e:
+                failed_tool_calls += 1
+                error_msg = f"Tool '{tool_name}' failed: {str(e)}"
+                logger.error(error_msg)
+
+                # Send error message back to LLM so it can try alternative approaches
+                from langchain_core.messages import ToolMessage
+
+                messages.append(
+                    ToolMessage(
+                        content=f"Error: {str(e)}. Please try a different search query or tool.",
+                        tool_call_id=tool_call["id"],
+                    )
+                )
+
+    # Parse final response with validation retry
+    critic_feedback = None
+    for attempt in range(max_retries + 1):
+        try:
+            critic_feedback = _parse_json_response(response.content, CriticFeedback)
+            if attempt > 0:
+                logger.info(f"Critic validation succeeded on attempt {attempt + 1}")
+            break
+        except ValidationError as e:
+            logger.warning(
+                f"Critic validation error on attempt {attempt + 1}/{max_retries + 1}"
+            )
+
+            if attempt >= max_retries:
+                # Final attempt - try auto-fix
+                logger.warning("Attempting auto-fix for critic output")
+                try:
+                    response_text = response.content
+                    if "```json" in response_text:
+                        response_text = response_text.split("```json")[1].split("```")[0].strip()
+                    elif "```" in response_text:
+                        response_text = response_text.split("```")[1].split("```")[0].strip()
+                    data = json.loads(response_text.strip(), strict=False)
+                    critic_feedback = _auto_fix_validation(data, e, CriticFeedback)
+                    break
+                except Exception:
+                    raise e
+
+            # Retry with error feedback (no tool calls needed)
+            error_message = _format_validation_error(e)
+            error_prompt = f"""
+Your previous response had validation errors. Please fix the JSON output:
+
+{error_message}
+
+Return ONLY the corrected JSON, no tool calls needed.
+"""
+            messages.append(HumanMessage(content=error_prompt))
+            response = llm.invoke(messages)  # Use regular LLM without tools
+            messages.append(response)
+
+    successful_tools = tool_call_count - failed_tool_calls
+    if tool_call_count > 0:
+        logger.info(
+            "Critic tool usage: %d/%d tool calls succeeded",
+            successful_tools, tool_call_count
+        )
 
     # Create iteration history entry
     iteration = FactCheckIteration(
@@ -718,8 +829,9 @@ def critic_node(state: AgentState) -> dict:
 
     if should_continue:
         logger.info("Decision: CONTINUE critic loop (research needs improvement)")
+        tool_info = f" ({successful_tools}/{tool_call_count} tool calls)" if tool_call_count > 0 else ""
         message = (
-            f"Critic iteration {current_iteration + 1}: Research needs improvement - "
+            f"Critic iteration {current_iteration + 1}{tool_info}: Research needs improvement - "
             f"identified {num_missing} missing verifications, "
             f"{num_improvements} suggested improvements. "
             f"Quality score: {critic_feedback.quality_score:.2f}"
@@ -727,8 +839,9 @@ def critic_node(state: AgentState) -> dict:
     else:
         reason = "Critic satisfied" if critic_feedback.research_is_sufficient else "Max iterations reached"
         logger.info("Decision: END critic loop (%s)", reason)
+        tool_info = f" Used {successful_tools}/{tool_call_count} tools." if tool_call_count > 0 else ""
         message = (
-            f"{reason}: Quality score {critic_feedback.quality_score:.2f}. "
+            f"{reason}: Quality score {critic_feedback.quality_score:.2f}.{tool_info} "
             f"Final review complete with {num_missing} remaining gaps."
         )
 

@@ -191,7 +191,7 @@ async def generate_sse_events(
         # Get model responses from accumulated final state
         model_responses = final_state.get("model_responses")
 
-        # Construct final output
+        # Construct final output with full process details
         final_output = FinalOutput(
             summary=model_responses.supervisor if model_responses else None,
             fact_check=model_responses.fact_check_current if model_responses else None,
@@ -200,11 +200,16 @@ async def generate_sse_events(
             else 0.0,
             critic_iterations=final_state.get("critic_iterations", 0),
             processing_notes="; ".join(final_state.get("messages", [])),
+            model_responses=model_responses,  # Include full process details
         )
 
         # Generate output files (JSON and Markdown)
+        json_filename = None
+        md_filename = None
         try:
             json_path, md_path = generate_outputs(final_output)
+            json_filename = json_path.name  # Just the filename, not full path
+            md_filename = md_path.name
             logger.info(f"Output files generated: {json_path}, {md_path}")
         except Exception as e:
             logger.error(f"Failed to generate output files: {e}")
@@ -212,7 +217,15 @@ async def generate_sse_events(
         # Send final result with error handling
         try:
             # mode='json' converts datetime to ISO strings
-            yield f"data: {json.dumps({'stage': 'complete', 'result': final_output.model_dump(mode='json')})}\n\n"
+            result_data = {
+                'stage': 'complete',
+                'result': final_output.model_dump(mode='json'),
+                'output_files': {
+                    'json': json_filename,
+                    'markdown': md_filename,
+                }
+            }
+            yield f"data: {json.dumps(result_data)}\n\n"
         except Exception as e:
             logger.error(f"Failed to serialize final output: {e}")
             import traceback
@@ -309,12 +322,56 @@ async def health_check():
             1
             for key in [
                 config.settings.tavily_api_key,
-                config.settings.serper_api_key,
                 config.settings.brave_api_key,
             ]
             if key is not None
         ),
     }
+
+
+@app.get("/api/download/{filename}")
+async def download_file(filename: str):
+    """Download a generated output file (JSON or Markdown).
+
+    Args:
+        filename: The filename to download (e.g., "analysis_20240101_120000.json")
+
+    Returns:
+        File download response
+    """
+    from fastapi.responses import FileResponse
+
+    # Security: Only allow downloading from output directory and validate filename
+    output_dir = Path(__file__).parent.parent / "output"
+    file_path = output_dir / filename
+
+    # Validate the file path to prevent directory traversal
+    try:
+        file_path = file_path.resolve()
+        output_dir = output_dir.resolve()
+
+        if not str(file_path).startswith(str(output_dir)):
+            raise HTTPException(status_code=400, detail="Invalid file path")
+
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+
+        # Determine media type
+        if filename.endswith('.json'):
+            media_type = 'application/json'
+        elif filename.endswith('.md'):
+            media_type = 'text/markdown'
+        else:
+            media_type = 'application/octet-stream'
+
+        return FileResponse(
+            path=file_path,
+            media_type=media_type,
+            filename=filename,
+        )
+    except Exception as e:
+        logger.error(f"Error downloading file {filename}: {e}")
+        raise HTTPException(status_code=500, detail="Error downloading file")
 
 
 if __name__ == "__main__":
