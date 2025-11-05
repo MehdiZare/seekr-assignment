@@ -12,7 +12,7 @@ from app.agents.nodes import (
     supervisor_node,
 )
 from app.config import get_config
-from app.models.state import AgentState
+from app.models.state import AgentState, ModelResponses
 
 
 def should_continue_critic_loop(state: AgentState) -> Literal["fact_checker", "end"]:
@@ -96,11 +96,7 @@ async def run_analysis(
     initial_state: AgentState = {
         "transcript": transcript,
         "metadata": metadata,
-        "analysis_a": None,
-        "analysis_b": None,
-        "supervisor_output": None,
-        "fact_check_output": None,
-        "critic_feedback": None,
+        "model_responses": ModelResponses(),
         "critic_iterations": 0,
         "max_critic_iterations": max_critic_iterations,
         "current_stage": "initialized",
@@ -138,11 +134,7 @@ async def stream_analysis(
     initial_state: AgentState = {
         "transcript": transcript,
         "metadata": metadata,
-        "analysis_a": None,
-        "analysis_b": None,
-        "supervisor_output": None,
-        "fact_check_output": None,
-        "critic_feedback": None,
+        "model_responses": ModelResponses(),
         "critic_iterations": 0,
         "max_critic_iterations": max_critic_iterations,
         "current_stage": "initialized",

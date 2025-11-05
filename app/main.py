@@ -19,6 +19,7 @@ from app.agents.graph import stream_analysis
 from app.config import get_config
 from app.models.outputs import FinalOutput
 from app.models.transcript import TranscriptInput
+from app.utils.output_writer import generate_outputs
 
 app = FastAPI(
     title="Podcast Agent",
@@ -137,16 +138,26 @@ async def generate_sse_events(
         # Get final state (last event)
         final_state = list(event.values())[0] if event else {}
 
+        # Get model responses from final state
+        model_responses = final_state.get("model_responses")
+
         # Construct final output
         final_output = FinalOutput(
-            summary=final_state.get("supervisor_output"),
-            fact_check=final_state.get("fact_check_output"),
-            confidence_in_analysis=final_state.get("fact_check_output").overall_reliability
-            if final_state.get("fact_check_output")
+            summary=model_responses.supervisor if model_responses else None,
+            fact_check=model_responses.fact_check_current if model_responses else None,
+            confidence_in_analysis=model_responses.fact_check_current.overall_reliability
+            if model_responses and model_responses.fact_check_current
             else 0.0,
             critic_iterations=final_state.get("critic_iterations", 0),
             processing_notes="; ".join(final_state.get("messages", [])),
         )
+
+        # Generate output files (JSON and Markdown)
+        try:
+            json_path, md_path = generate_outputs(final_output)
+            logger.info(f"Output files generated: {json_path}, {md_path}")
+        except Exception as e:
+            logger.error(f"Failed to generate output files: {e}")
 
         # Send final result
         yield f"data: {json.dumps({'stage': 'complete', 'result': final_output.model_dump()})}\n\n"

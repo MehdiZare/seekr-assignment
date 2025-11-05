@@ -28,7 +28,7 @@ from app.models.outputs import (
     ParallelAnalysis,
     SupervisorOutput,
 )
-from app.models.state import AgentState
+from app.models.state import AgentState, ModelResponses, FactCheckIteration
 
 
 @traceable(name="create_llm")
@@ -310,8 +310,12 @@ IMPORTANT: Make sure your response is valid JSON and follows ALL the schema cons
 
 # Parallel Processing Nodes
 @traceable(name="model_a_parallel_analysis")
-def model_a_node(state: AgentState) -> AgentState:
+def model_a_node(state: AgentState) -> dict:
     """Process transcript with Model A (Claude Haiku)."""
+    logger.info("=" * 80)
+    logger.info("MODEL A (Claude Haiku) - Starting parallel analysis")
+    logger.info(f"Transcript length: {len(state['transcript'])} characters")
+
     llm = _create_llm("model_a")
     config = get_config()
     max_retries = config.app_settings.get("max_retries", 3)
@@ -319,6 +323,8 @@ def model_a_node(state: AgentState) -> AgentState:
     prompt = PARALLEL_ANALYSIS_PROMPT.format(transcript=state["transcript"])
     messages = [HumanMessage(content=prompt)]
 
+    logger.info("Invoking Model A with validation retry (max retries: %d)", max_retries)
+
     # Use validation retry wrapper
     analysis = _invoke_llm_with_validation_retry(
         llm=llm,
@@ -327,19 +333,30 @@ def model_a_node(state: AgentState) -> AgentState:
         max_retries=max_retries,
     )
 
-    state["analysis_a"] = analysis
-    state["current_stage"] = "model_a_complete"
-    state.setdefault("messages", []).append(
-        f"Model A (Claude Haiku) analysis complete: "
-        f"{len(analysis.topics)} topics, {len(analysis.key_points)} key points identified"
+    logger.info(
+        "Model A completed: %d topics, %d key points",
+        len(analysis.topics),
+        len(analysis.key_points),
     )
+    logger.info("Topics identified: %s", ", ".join(analysis.topics[:3]) + ("..." if len(analysis.topics) > 3 else ""))
 
-    return state
+    # Return only the fields this node updates (partial state)
+    return {
+        "model_responses": ModelResponses(model_a=analysis),
+        "messages": [
+            f"Model A (Claude Haiku) analysis complete: "
+            f"{len(analysis.topics)} topics, {len(analysis.key_points)} key points identified"
+        ],
+    }
 
 
 @traceable(name="model_b_parallel_analysis")
-def model_b_node(state: AgentState) -> AgentState:
+def model_b_node(state: AgentState) -> dict:
     """Process transcript with Model B (GPT-4o-mini)."""
+    logger.info("=" * 80)
+    logger.info("MODEL B (Llama 4 Maverick) - Starting parallel analysis")
+    logger.info(f"Transcript length: {len(state['transcript'])} characters")
+
     llm = _create_llm("model_b")
     config = get_config()
     max_retries = config.app_settings.get("max_retries", 3)
@@ -347,6 +364,8 @@ def model_b_node(state: AgentState) -> AgentState:
     prompt = PARALLEL_ANALYSIS_PROMPT.format(transcript=state["transcript"])
     messages = [HumanMessage(content=prompt)]
 
+    logger.info("Invoking Model B with validation retry (max retries: %d)", max_retries)
+
     # Use validation retry wrapper
     analysis = _invoke_llm_with_validation_retry(
         llm=llm,
@@ -355,27 +374,45 @@ def model_b_node(state: AgentState) -> AgentState:
         max_retries=max_retries,
     )
 
-    state["analysis_b"] = analysis
-    state["current_stage"] = "model_b_complete"
-    state.setdefault("messages", []).append(
-        f"Model B (Llama 4 Maverick) analysis complete: "
-        f"{len(analysis.topics)} topics, {len(analysis.key_points)} key points identified"
+    logger.info(
+        "Model B completed: %d topics, %d key points",
+        len(analysis.topics),
+        len(analysis.key_points),
     )
+    logger.info("Topics identified: %s", ", ".join(analysis.topics[:3]) + ("..." if len(analysis.topics) > 3 else ""))
 
-    return state
+    # Return only the fields this node updates (partial state)
+    return {
+        "model_responses": ModelResponses(model_b=analysis),
+        "messages": [
+            f"Model B (Llama 4 Maverick) analysis complete: "
+            f"{len(analysis.topics)} topics, {len(analysis.key_points)} key points identified"
+        ],
+    }
 
 
 # Supervisor Node
 @traceable(name="supervisor_consolidation")
-def supervisor_node(state: AgentState) -> AgentState:
+def supervisor_node(state: AgentState) -> dict:
     """Consolidate analyses with Model C (Claude Sonnet)."""
+    logger.info("=" * 80)
+    logger.info("SUPERVISOR (Claude Sonnet) - Consolidating parallel analyses")
+
     llm = _create_llm("model_c")
     config = get_config()
     max_retries = config.app_settings.get("max_retries", 3)
 
+    # Get model responses
+    model_responses = state["model_responses"]
+
+    logger.info("Merging results from Model A and Model B")
+    logger.info("Model A found %d topics, Model B found %d topics",
+                len(model_responses.model_a.topics),
+                len(model_responses.model_b.topics))
+
     # Convert Pydantic models to dict for formatting
-    analysis_a_dict = state["analysis_a"].model_dump_json(indent=2)
-    analysis_b_dict = state["analysis_b"].model_dump_json(indent=2)
+    analysis_a_dict = model_responses.model_a.model_dump_json(indent=2)
+    analysis_b_dict = model_responses.model_b.model_dump_json(indent=2)
 
     prompt = SUPERVISOR_PROMPT.format(
         analysis_a=analysis_a_dict,
@@ -383,6 +420,8 @@ def supervisor_node(state: AgentState) -> AgentState:
         transcript=state["transcript"],
     )
     messages = [HumanMessage(content=prompt)]
+
+    logger.info("Invoking Supervisor with validation retry (max retries: %d)", max_retries)
 
     # Use validation retry wrapper to handle Pydantic validation errors
     supervisor_output = _invoke_llm_with_validation_retry(
@@ -392,28 +431,37 @@ def supervisor_node(state: AgentState) -> AgentState:
         max_retries=max_retries,
     )
 
-    state["supervisor_output"] = supervisor_output
-    state["current_stage"] = "supervisor_complete"
-
     # Add detailed progress message
     num_topics = len(supervisor_output.main_topics)
     num_takeaways = len(supervisor_output.key_takeaways)
     num_claims = len(supervisor_output.claims_to_verify)
     num_quotes = len(supervisor_output.notable_quotes)
 
-    state.setdefault("messages", []).append(
-        f"Supervisor (Claude Sonnet) consolidated analyses: "
-        f"{num_topics} topics, {num_takeaways} key takeaways, "
-        f"{num_quotes} notable quotes, {num_claims} claims identified for verification"
+    logger.info(
+        "Supervisor consolidation complete: %d topics, %d takeaways, %d claims to verify, %d quotes",
+        num_topics, num_takeaways, num_claims, num_quotes
     )
+    logger.info("Summary length: %d characters (max 400)", len(supervisor_output.final_summary))
+    logger.info("Claims to verify: %s", ", ".join(supervisor_output.claims_to_verify[:2]) + ("..." if num_claims > 2 else ""))
 
-    return state
+    # Return partial state update
+    return {
+        "model_responses": ModelResponses(supervisor=supervisor_output),
+        "current_stage": "supervisor_complete",
+        "messages": [
+            f"Supervisor (Claude Sonnet) consolidated analyses: "
+            f"{num_topics} topics, {num_takeaways} key takeaways, "
+            f"{num_quotes} notable quotes, {num_claims} claims identified for verification"
+        ],
+    }
 
 
 # Fact Checker Node
 @traceable(name="fact_checker_with_tools", run_type="llm")
-def fact_checker_node(state: AgentState) -> AgentState:
+def fact_checker_node(state: AgentState) -> dict:
     """Verify claims with Model D (GPT-4o) using search tools."""
+    logger.info("=" * 80)
+
     llm = _create_llm("model_d")
     config = get_config()
     max_retries = config.app_settings.get("max_retries", 3)
@@ -422,16 +470,28 @@ def fact_checker_node(state: AgentState) -> AgentState:
     # Create LLM with tool binding
     llm_with_tools = llm.bind_tools(tools)
 
-    claims = state["supervisor_output"].claims_to_verify
-    summary = state["supervisor_output"].final_summary
+    # Get model responses
+    model_responses = state["model_responses"]
+
+    claims = model_responses.supervisor.claims_to_verify
+    summary = model_responses.supervisor.final_summary
 
     # Determine if this is a re-verification based on critic feedback
-    is_improvement = state.get("critic_feedback") is not None
+    is_improvement = model_responses.critic_current is not None
+
+    if is_improvement:
+        iteration = state.get("critic_iterations", 0)
+        logger.info("FACT-CHECKER (GPT-4o) - Re-verification iteration %d", iteration)
+        logger.info("Applying critic feedback to improve fact-checking quality")
+    else:
+        logger.info("FACT-CHECKER (GPT-4o) - Initial fact-checking")
+        logger.info("Number of claims to verify: %d", len(claims))
+        logger.info("Available search tools: %s", ", ".join(tool.name for tool in tools))
 
     if is_improvement:
         # Use improved prompt with critic feedback
-        previous_fact_check = state["fact_check_output"].model_dump_json(indent=2)
-        critic_feedback = state["critic_feedback"].model_dump_json(indent=2)
+        previous_fact_check = model_responses.fact_check_current.model_dump_json(indent=2)
+        critic_feedback = model_responses.critic_current.model_dump_json(indent=2)
 
         prompt = IMPROVED_FACT_CHECKER_PROMPT.format(
             previous_fact_check=previous_fact_check,
@@ -491,7 +551,9 @@ def fact_checker_node(state: AgentState) -> AgentState:
                     )
                 )
 
+                result_preview = str(tool_result)[:150] + ("..." if len(str(tool_result)) > 150 else "")
                 logger.info(f"Successfully executed tool '{tool_name}' (call {tool_call_count})")
+                logger.info(f"  Result preview: {result_preview}")
 
             except Exception as e:
                 failed_tool_calls += 1
@@ -550,9 +612,6 @@ Return ONLY the corrected JSON, no tool calls needed.
             response = llm.invoke(messages)  # Use regular LLM without tools
             messages.append(response)
 
-    state["fact_check_output"] = fact_check_output
-    state["current_stage"] = "fact_check_complete"
-
     # Add detailed progress message with statistics
     num_verified = sum(
         1 for claim in fact_check_output.verified_claims
@@ -568,33 +627,63 @@ Return ONLY the corrected JSON, no tool calls needed.
     )
     successful_tools = tool_call_count - failed_tool_calls
 
-    state.setdefault("messages", []).append(
-        f"Fact-checking complete: {successful_tools}/{tool_call_count} tool calls succeeded, "
-        f"verified {num_verified} claims, {num_partial} partially verified, "
-        f"{num_unverified} unverified/false. "
-        f"Research quality: {fact_check_output.research_quality:.2f}, "
-        f"Overall reliability: {fact_check_output.overall_reliability:.2f}"
+    logger.info(
+        "Fact-checking complete: %d/%d tool calls succeeded",
+        successful_tools, tool_call_count
+    )
+    logger.info(
+        "Results: %d verified, %d partially verified, %d unverified/false",
+        num_verified, num_partial, num_unverified
+    )
+    logger.info(
+        "Quality metrics: research_quality=%.2f, overall_reliability=%.2f",
+        fact_check_output.research_quality, fact_check_output.overall_reliability
     )
 
-    return state
+    # Return partial state update
+    return {
+        "model_responses": ModelResponses(fact_check_current=fact_check_output),
+        "current_stage": "fact_check_complete",
+        "messages": [
+            f"Fact-checking complete: {successful_tools}/{tool_call_count} tool calls succeeded, "
+            f"verified {num_verified} claims, {num_partial} partially verified, "
+            f"{num_unverified} unverified/false. "
+            f"Research quality: {fact_check_output.research_quality:.2f}, "
+            f"Overall reliability: {fact_check_output.overall_reliability:.2f}"
+        ],
+    }
 
 
 # Critic Node
 @traceable(name="critic_quality_review")
-def critic_node(state: AgentState) -> AgentState:
+def critic_node(state: AgentState) -> dict:
     """Evaluate fact-checking quality."""
+    logger.info("=" * 80)
+
     llm = _create_llm("model_c")  # Use Sonnet for critic too
     config = get_config()
     max_retries = config.app_settings.get("max_retries", 3)
 
-    fact_check_output = state["fact_check_output"].model_dump_json(indent=2)
-    claims = state["supervisor_output"].claims_to_verify
+    # Get model responses
+    model_responses = state["model_responses"]
+
+    # Update iteration counter
+    current_iteration = state.get("critic_iterations", 0)
+    max_iterations = state.get("max_critic_iterations", 2)
+
+    logger.info("CRITIC (Claude Sonnet) - Iteration %d/%d", current_iteration + 1, max_iterations)
+    logger.info("Evaluating fact-checking quality and research thoroughness")
+
+    fact_check_output = model_responses.fact_check_current.model_dump_json(indent=2)
+    claims = model_responses.supervisor.claims_to_verify
 
     prompt = CRITIC_PROMPT.format(
         fact_check_output=fact_check_output,
         claims="\n".join(f"- {claim}" for claim in claims),
     )
     messages = [HumanMessage(content=prompt)]
+
+    logger.info("Invoking Critic with validation retry (max retries: %d)", max_retries)
 
     # Use validation retry wrapper
     critic_feedback = _invoke_llm_with_validation_retry(
@@ -604,28 +693,32 @@ def critic_node(state: AgentState) -> AgentState:
         max_retries=max_retries,
     )
 
-    state["critic_feedback"] = critic_feedback
-    state["current_stage"] = "critic_complete"
-
-    # Update iteration counter
-    current_iteration = state.get("critic_iterations", 0)
-    state["critic_iterations"] = current_iteration + 1
+    # Create iteration history entry
+    iteration = FactCheckIteration(
+        iteration=current_iteration,
+        fact_check=model_responses.fact_check_current,
+        critic_feedback=critic_feedback,
+    )
 
     # Determine if we should continue
-    max_iterations = state.get("max_critic_iterations", 2)
     should_continue = (
         not critic_feedback.research_is_sufficient
         and current_iteration < max_iterations - 1
     )
 
-    state["should_continue"] = should_continue
+    logger.info("Critic evaluation: quality_score=%.2f, research_sufficient=%s",
+                critic_feedback.quality_score, critic_feedback.research_is_sufficient)
+    logger.info("Missing verifications: %d, Suggested improvements: %d",
+                len(critic_feedback.missing_verifications),
+                len(critic_feedback.suggested_improvements))
 
     # Add detailed progress messages
     num_missing = len(critic_feedback.missing_verifications)
     num_improvements = len(critic_feedback.suggested_improvements)
 
     if should_continue:
-        state.setdefault("messages", []).append(
+        logger.info("Decision: CONTINUE critic loop (research needs improvement)")
+        message = (
             f"Critic iteration {current_iteration + 1}: Research needs improvement - "
             f"identified {num_missing} missing verifications, "
             f"{num_improvements} suggested improvements. "
@@ -633,9 +726,23 @@ def critic_node(state: AgentState) -> AgentState:
         )
     else:
         reason = "Critic satisfied" if critic_feedback.research_is_sufficient else "Max iterations reached"
-        state.setdefault("messages", []).append(
+        logger.info("Decision: END critic loop (%s)", reason)
+        message = (
             f"{reason}: Quality score {critic_feedback.quality_score:.2f}. "
             f"Final review complete with {num_missing} remaining gaps."
         )
 
-    return state
+    # Build updated model responses with history
+    updated_responses = ModelResponses(
+        critic_current=critic_feedback,
+        fact_check_iterations=[iteration],  # Append to existing iterations
+    )
+
+    # Return partial state update
+    return {
+        "model_responses": updated_responses,
+        "current_stage": "critic_complete",
+        "critic_iterations": current_iteration + 1,
+        "should_continue": should_continue,
+        "messages": [message],
+    }
