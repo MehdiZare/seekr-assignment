@@ -88,8 +88,8 @@ def generate_json_output(
             "confidence_in_analysis": round(final_output.confidence_in_analysis, 3),
         },
         "summary": {
-            "topics": final_output.summary.topics if final_output.summary else [],
-            "key_points": final_output.summary.key_points if final_output.summary else [],
+            "main_topics": final_output.summary.main_topics if final_output.summary else [],
+            "key_takeaways": final_output.summary.key_takeaways if final_output.summary else [],
             "final_summary": final_output.summary.final_summary if final_output.summary else "",
         },
         "notes": final_output.processing_notes or "",
@@ -97,9 +97,10 @@ def generate_json_output(
             "overall_reliability": round(final_output.fact_check.overall_reliability, 3)
             if final_output.fact_check
             else 0.0,
-            "claims": _format_fact_check_table_json(final_output.fact_check),
-            "issues_found": final_output.fact_check.issues_found if final_output.fact_check else [],
-            "recommendations": final_output.fact_check.recommendations if final_output.fact_check else [],
+            "research_quality": round(final_output.fact_check.research_quality, 3)
+            if final_output.fact_check
+            else 0.0,
+            "verified_claims": _format_fact_check_table_json(final_output.fact_check),
         },
     }
 
@@ -149,13 +150,13 @@ def generate_markdown_output(
         md_content += f"{final_output.summary.final_summary}\n\n"
 
         md_content += "### Topics Discussed\n\n"
-        for topic in final_output.summary.topics:
+        for topic in final_output.summary.main_topics:
             md_content += f"- {topic}\n"
         md_content += "\n"
 
-        md_content += "### Key Points\n\n"
-        for point in final_output.summary.key_points:
-            md_content += f"- {point}\n"
+        md_content += "### Key Takeaways\n\n"
+        for takeaway in final_output.summary.key_takeaways:
+            md_content += f"- {takeaway}\n"
         md_content += "\n"
     else:
         md_content += "*No summary available*\n\n"
@@ -171,22 +172,11 @@ def generate_markdown_output(
     md_content += "## Fact-Check Results\n\n"
     if final_output.fact_check:
         md_content += f"**Overall Reliability:** {final_output.fact_check.overall_reliability:.1%}\n\n"
+        md_content += f"**Research Quality:** {final_output.fact_check.research_quality:.1%}\n\n"
 
-        if final_output.fact_check.issues_found:
-            md_content += "### Issues Found\n\n"
-            for issue in final_output.fact_check.issues_found:
-                md_content += f"- {issue}\n"
-            md_content += "\n"
-
-        md_content += "### Claims Verification\n\n"
+        md_content += "### Verified Claims\n\n"
         md_content += _format_fact_check_table_markdown(final_output.fact_check)
         md_content += "\n"
-
-        if final_output.fact_check.recommendations:
-            md_content += "### Recommendations\n\n"
-            for rec in final_output.fact_check.recommendations:
-                md_content += f"- {rec}\n"
-            md_content += "\n"
     else:
         md_content += "*No fact-check results available*\n\n"
 

@@ -113,32 +113,82 @@ async def generate_sse_events(
     config = get_config()
     stream_delay = config.app_settings.get("stream_delay_ms", 100) / 1000.0
 
+    # Import merge function for state accumulation
+    from app.models.state import merge_model_responses, ModelResponses
+
     try:
         # Send initial event
         yield f"data: {json.dumps({'stage': 'started', 'message': 'Analysis started'})}\n\n"
         await asyncio.sleep(stream_delay)
 
+        # Track accumulated state throughout streaming
+        accumulated_state = {}
+
         # Stream the workflow
         async for event in stream_analysis(transcript, metadata):
             # event is a dict with node name as key
             for node_name, node_state in event.items():
+                # Accumulate state updates from this node
+                for key, value in node_state.items():
+                    if key == "model_responses":
+                        # Special handling: merge model_responses using reducer function
+                        existing_responses = accumulated_state.get("model_responses")
+                        accumulated_state["model_responses"] = merge_model_responses(
+                            existing_responses, value
+                        )
+                    elif key == "messages":
+                        # Special handling: append messages instead of replacing
+                        accumulated_state.setdefault("messages", []).extend(value)
+                    else:
+                        # Regular update: overwrite with new value
+                        accumulated_state[key] = value
+
                 stage = node_state.get("current_stage", "processing")
                 messages = node_state.get("messages", [])
 
-                # Send stage update
+                # Prepare enhanced SSE data with additional agent reasoning details
                 stage_data = {
                     "stage": stage,
                     "node": node_name,
                     "message": messages[-1] if messages else f"Processing {node_name}",
                 }
 
-                yield f"data: {json.dumps(stage_data)}\n\n"
+                # Add model_responses data if available (for UI enhancements)
+                if "model_responses" in node_state:
+                    responses = node_state["model_responses"]
+                    try:
+                        # Serialize model_responses for frontend (mode='json' converts datetime to ISO strings)
+                        stage_data["model_data"] = responses.model_dump(mode='json') if hasattr(responses, 'model_dump') else {}
+                    except Exception as e:
+                        logger.warning(f"Failed to serialize model_data for node {node_name}: {e}")
+                        stage_data["model_data"] = {}  # Graceful degradation - continue without this data
+
+                # Add quality metrics if available
+                if "critic_iterations" in node_state:
+                    stage_data["critic_iterations"] = node_state["critic_iterations"]
+                if "should_continue" in node_state:
+                    stage_data["should_continue"] = node_state["should_continue"]
+
+                # Send SSE event with error handling for JSON serialization
+                try:
+                    yield f"data: {json.dumps(stage_data)}\n\n"
+                except TypeError as e:
+                    logger.error(f"JSON serialization failed for stage_data: {e}")
+                    # Send simplified error-free event
+                    safe_event = {
+                        "stage": stage,
+                        "node": node_name,
+                        "message": messages[-1] if messages else f"Processing {node_name}",
+                        "warning": "Some data could not be displayed"
+                    }
+                    yield f"data: {json.dumps(safe_event)}\n\n"
+
                 await asyncio.sleep(stream_delay)
 
-        # Get final state (last event)
-        final_state = list(event.values())[0] if event else {}
+        # Use accumulated state instead of last event
+        final_state = accumulated_state
 
-        # Get model responses from final state
+        # Get model responses from accumulated final state
         model_responses = final_state.get("model_responses")
 
         # Construct final output
@@ -159,8 +209,16 @@ async def generate_sse_events(
         except Exception as e:
             logger.error(f"Failed to generate output files: {e}")
 
-        # Send final result
-        yield f"data: {json.dumps({'stage': 'complete', 'result': final_output.model_dump()})}\n\n"
+        # Send final result with error handling
+        try:
+            # mode='json' converts datetime to ISO strings
+            yield f"data: {json.dumps({'stage': 'complete', 'result': final_output.model_dump(mode='json')})}\n\n"
+        except Exception as e:
+            logger.error(f"Failed to serialize final output: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            # Send error event
+            yield f"data: {json.dumps({'stage': 'error', 'message': 'Failed to generate final output. Please try again.'})}\n\n"
 
     except Exception as e:
         import traceback

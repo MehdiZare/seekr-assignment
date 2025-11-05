@@ -131,6 +131,50 @@
 
         <!-- Results Section -->
         <div id="results-section" class="hidden">
+            <!-- Processing Timeline -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h2 class="text-2xl font-semibold mb-4">Processing Timeline</h2>
+                <div id="timeline-container" class="space-y-2"></div>
+            </div>
+
+            <!-- Quality Metrics Dashboard -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h2 class="text-2xl font-semibold mb-4">Quality Metrics</h2>
+                <div class="grid md:grid-cols-4 gap-4">
+                    <div class="text-center">
+                        <div class="text-3xl font-bold text-blue-600" id="metric-confidence">-</div>
+                        <div class="text-sm text-gray-600 mt-1">Overall Confidence</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-3xl font-bold text-green-600" id="metric-research">-</div>
+                        <div class="text-sm text-gray-600 mt-1">Research Quality</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-3xl font-bold text-purple-600" id="metric-critic">-</div>
+                        <div class="text-sm text-gray-600 mt-1">Critic Score</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-3xl font-bold text-orange-600" id="metric-iterations">-</div>
+                        <div class="text-sm text-gray-600 mt-1">Critic Iterations</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Model Comparison -->
+            <div id="model-comparison-section" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
+                <h2 class="text-2xl font-semibold mb-4">Model Analysis Comparison</h2>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div id="model-a-analysis" class="border-l-4 border-blue-500 pl-4">
+                        <h3 class="font-semibold text-lg mb-2 text-blue-700">Model A (Claude Haiku)</h3>
+                        <div id="model-a-content" class="text-sm text-gray-700"></div>
+                    </div>
+                    <div id="model-b-analysis" class="border-l-4 border-green-500 pl-4">
+                        <h3 class="font-semibold text-lg mb-2 text-green-700">Model B (Llama Maverick)</h3>
+                        <div id="model-b-content" class="text-sm text-gray-700"></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Summary -->
             <div class="bg-white rounded-lg shadow-md p-6 mb-6">
                 <h2 class="text-2xl font-semibold mb-4">Summary</h2>
@@ -148,17 +192,6 @@
                 </div>
 
                 <div id="quotes-section" class="mb-4"></div>
-
-                <div class="flex items-center space-x-4 text-sm">
-                    <div>
-                        <span class="font-medium">Confidence:</span>
-                        <span id="result-confidence" class="text-blue-600 font-semibold"></span>
-                    </div>
-                    <div>
-                        <span class="font-medium">Critic Iterations:</span>
-                        <span id="result-iterations" class="text-gray-700"></span>
-                    </div>
-                </div>
             </div>
 
             <!-- Fact Check Results -->
@@ -171,6 +204,18 @@
 
     <script>
         let currentEventSource = null;
+        let timelineEvents = [];
+        let modelData = {
+            model_a: null,
+            model_b: null,
+            supervisor: null,
+            fact_check: null,
+            critic: null
+        };
+        let qualityMetrics = {
+            research_quality: null,
+            critic_score: null
+        };
 
         // Load samples on page load
         document.addEventListener('DOMContentLoaded', loadSamples);
@@ -256,6 +301,20 @@
         }
 
         function startSSEAnalysis(url, body, isFormData) {
+            // Reset timeline and model data for new analysis
+            timelineEvents = [];
+            modelData = {
+                model_a: null,
+                model_b: null,
+                supervisor: null,
+                fact_check: null,
+                critic: null
+            };
+            qualityMetrics = {
+                research_quality: null,
+                critic_score: null
+            };
+
             // Show progress section
             document.getElementById('progress-section').classList.remove('hidden');
             document.getElementById('results-section').classList.add('hidden');
@@ -312,7 +371,54 @@
         }
 
         function handleSSEEvent(data) {
-            const { stage, message, node, result } = data;
+            const { stage, message, node, result, model_data, critic_iterations } = data;
+
+            // Store timeline event
+            if (message && node) {
+                timelineEvents.push({
+                    timestamp: new Date().toLocaleTimeString(),
+                    node: node,
+                    message: message,
+                    stage: stage
+                });
+            }
+
+            // Capture model data for display
+            if (model_data) {
+                if (node === 'model_a' && model_data.model_a) {
+                    modelData.model_a = model_data.model_a;
+                } else if (node === 'model_b' && model_data.model_b) {
+                    modelData.model_b = model_data.model_b;
+                } else if (node === 'supervisor' && model_data.supervisor) {
+                    modelData.supervisor = model_data.supervisor;
+                } else if (node === 'fact_checker' && model_data.fact_check_current) {
+                    modelData.fact_check = model_data.fact_check_current;
+                    // Capture research quality
+                    if (model_data.fact_check_current.research_quality) {
+                        qualityMetrics.research_quality = model_data.fact_check_current.research_quality;
+                    }
+                } else if (node === 'critic' && model_data.critic_current) {
+                    modelData.critic = model_data.critic_current;
+                    // Capture critic score
+                    if (model_data.critic_current.quality_score) {
+                        qualityMetrics.critic_score = model_data.critic_current.quality_score;
+                    }
+                }
+            }
+
+            // Progressive display: show results as they become available
+            if (node === 'model_a' || node === 'model_b') {
+                displayModelComparisonProgressive();
+            }
+            if (node === 'supervisor') {
+                displaySupervisorProgressive();
+            }
+            if (node === 'fact_checker') {
+                displayFactCheckProgressive();
+            }
+            if (node === 'critic') {
+                displayCriticProgressive();
+            }
 
             // Add message
             if (message) {
@@ -329,6 +435,20 @@
                 displayResults(result);
             } else if (stage === 'error') {
                 addMessage(message, true);
+
+                // Show enhanced error UI with retry option
+                const progressSection = document.getElementById('progress-section');
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'bg-red-50 border border-red-200 rounded p-4 mt-4';
+                errorDiv.innerHTML = `
+                    <h3 class="font-semibold text-red-800 mb-2">Analysis Error</h3>
+                    <p class="text-red-700 mb-3">${message}</p>
+                    <button onclick="location.reload()"
+                            class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition">
+                        Retry Analysis
+                    </button>
+                `;
+                progressSection.appendChild(errorDiv);
             }
         }
 
@@ -380,6 +500,15 @@
 
             // Show results section
             document.getElementById('results-section').classList.remove('hidden');
+
+            // Populate Timeline
+            displayTimeline();
+
+            // Populate Quality Metrics
+            displayQualityMetrics(result);
+
+            // Populate Model Comparison (if data available)
+            displayModelComparison();
 
             // Summary
             document.getElementById('result-summary').textContent = result.summary.final_summary;
@@ -444,6 +573,101 @@
             `;
         }
 
+        function displayTimeline() {
+            const container = document.getElementById('timeline-container');
+            container.innerHTML = timelineEvents.map(event => {
+                const nodeColors = {
+                    'model_a': 'bg-blue-100 border-blue-500 text-blue-800',
+                    'model_b': 'bg-green-100 border-green-500 text-green-800',
+                    'supervisor': 'bg-purple-100 border-purple-500 text-purple-800',
+                    'fact_checker': 'bg-orange-100 border-orange-500 text-orange-800',
+                    'critic': 'bg-pink-100 border-pink-500 text-pink-800'
+                };
+                const color = nodeColors[event.node] || 'bg-gray-100 border-gray-500 text-gray-800';
+                return `
+                    <div class="flex items-start space-x-3 ${color} border-l-4 p-3 rounded">
+                        <div class="text-xs font-mono text-gray-500">${event.timestamp}</div>
+                        <div class="flex-1">
+                            <div class="font-semibold text-sm">${formatNodeName(event.node)}</div>
+                            <div class="text-sm">${event.message}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function displayQualityMetrics(result) {
+            // Overall Confidence
+            document.getElementById('metric-confidence').textContent =
+                (result.confidence_in_analysis * 100).toFixed(0) + '%';
+
+            // Research Quality (from fact-checker)
+            const researchQuality = qualityMetrics.research_quality ||
+                (result.fact_check ? result.fact_check.research_quality : null);
+            document.getElementById('metric-research').textContent =
+                researchQuality ? (researchQuality * 100).toFixed(0) + '%' : 'N/A';
+
+            // Critic Score
+            const criticScore = qualityMetrics.critic_score;
+            document.getElementById('metric-critic').textContent =
+                criticScore ? (criticScore * 100).toFixed(0) + '%' : 'N/A';
+
+            // Iterations
+            document.getElementById('metric-iterations').textContent = result.critic_iterations;
+        }
+
+        function displayModelComparison() {
+            // Only show if we have both model A and B data
+            if (modelData.model_a && modelData.model_b) {
+                document.getElementById('model-comparison-section').classList.remove('hidden');
+
+                // Model A
+                const modelAHtml = `
+                    <div class="mb-3">
+                        <div class="font-medium text-sm mb-1">Topics (${modelData.model_a.topics.length}):</div>
+                        <ul class="list-disc list-inside text-xs space-y-1">
+                            ${modelData.model_a.topics.map(t => `<li>${t}</li>`).join('')}
+                        </ul>
+                    </div>
+                    <div>
+                        <div class="font-medium text-sm mb-1">Key Points (${modelData.model_a.key_points.length}):</div>
+                        <ul class="list-disc list-inside text-xs space-y-1">
+                            ${modelData.model_a.key_points.map(p => `<li>${p}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+                document.getElementById('model-a-content').innerHTML = modelAHtml;
+
+                // Model B
+                const modelBHtml = `
+                    <div class="mb-3">
+                        <div class="font-medium text-sm mb-1">Topics (${modelData.model_b.topics.length}):</div>
+                        <ul class="list-disc list-inside text-xs space-y-1">
+                            ${modelData.model_b.topics.map(t => `<li>${t}</li>`).join('')}
+                        </ul>
+                    </div>
+                    <div>
+                        <div class="font-medium text-sm mb-1">Key Points (${modelData.model_b.key_points.length}):</div>
+                        <ul class="list-disc list-inside text-xs space-y-1">
+                            ${modelData.model_b.key_points.map(p => `<li>${p}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+                document.getElementById('model-b-content').innerHTML = modelBHtml;
+            }
+        }
+
+        function formatNodeName(node) {
+            const names = {
+                'model_a': 'Model A (Claude Haiku)',
+                'model_b': 'Model B (Llama Maverick)',
+                'supervisor': 'Supervisor (Claude Sonnet)',
+                'fact_checker': 'Fact-Checker (GPT-4o)',
+                'critic': 'Critic (Claude Sonnet)'
+            };
+            return names[node] || node;
+        }
+
         function getStatusColor(status) {
             const colors = {
                 'verified': 'bg-green-100 text-green-800',
@@ -452,6 +676,102 @@
                 'false': 'bg-red-100 text-red-800'
             };
             return colors[status] || 'bg-gray-100 text-gray-800';
+        }
+
+        // Progressive display functions - show results as they become available
+
+        function displayModelComparisonProgressive() {
+            if (modelData.model_a && modelData.model_b) {
+                document.getElementById('results-section').classList.remove('hidden');
+                document.getElementById('model-comparison-section').classList.remove('hidden');
+                displayModelComparison();
+            }
+        }
+
+        function displaySupervisorProgressive() {
+            if (modelData.supervisor) {
+                document.getElementById('results-section').classList.remove('hidden');
+
+                const summary = modelData.supervisor;
+                document.getElementById('result-summary').textContent = summary.final_summary;
+
+                const topicsList = document.getElementById('result-topics');
+                topicsList.innerHTML = summary.main_topics.map(t => `<li>${t}</li>`).join('');
+
+                const takeawaysList = document.getElementById('result-takeaways');
+                takeawaysList.innerHTML = summary.key_takeaways.map(t => `<li>${t}</li>`).join('');
+
+                // Quotes if available
+                if (summary.notable_quotes && summary.notable_quotes.length > 0) {
+                    const quotesDiv = document.getElementById('quotes-section');
+                    quotesDiv.innerHTML = '<h3 class="font-semibold mb-2">Notable Quotes</h3>' +
+                        summary.notable_quotes.map(q =>
+                            `<blockquote class="border-l-4 border-blue-500 pl-4 mb-2 italic text-gray-700">
+                                "${q.text}" ${q.speaker ? `— ${q.speaker}` : ''}
+                            </blockquote>`
+                        ).join('');
+                }
+            }
+        }
+
+        function displayFactCheckProgressive() {
+            if (modelData.fact_check) {
+                document.getElementById('results-section').classList.remove('hidden');
+
+                const factCheck = modelData.fact_check;
+
+                // Update quality metrics
+                if (factCheck.research_quality) {
+                    document.getElementById('metric-research').textContent =
+                        (factCheck.research_quality * 100).toFixed(0) + '%';
+                }
+                if (factCheck.overall_reliability) {
+                    document.getElementById('metric-confidence').textContent =
+                        (factCheck.overall_reliability * 100).toFixed(0) + '%';
+                }
+
+                // Display fact-check table
+                const tableDiv = document.getElementById('fact-check-table');
+                tableDiv.innerHTML = `
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="p-2 text-left">Claim</th>
+                                <th class="p-2 text-left">Status</th>
+                                <th class="p-2 text-left">Confidence</th>
+                                <th class="p-2 text-left">Sources</th>
+                                <th class="p-2 text-left">Reasoning</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${factCheck.verified_claims.map(claim => `
+                                <tr class="border-t">
+                                    <td class="p-2">${claim.claim}</td>
+                                    <td class="p-2">
+                                        <span class="px-2 py-1 rounded text-xs ${getStatusColor(claim.verification_status)}">
+                                            ${claim.verification_status}
+                                        </span>
+                                    </td>
+                                    <td class="p-2">${(claim.confidence * 100).toFixed(0)}%</td>
+                                    <td class="p-2">
+                                        ${claim.sources.map(s =>
+                                            `<a href="${s.url}" target="_blank" class="text-blue-600 hover:underline block">${s.title}</a>`
+                                        ).join('')}
+                                    </td>
+                                    <td class="p-2 text-xs text-gray-600">${claim.reasoning}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            }
+        }
+
+        function displayCriticProgressive() {
+            if (modelData.critic) {
+                document.getElementById('metric-critic').textContent =
+                    (modelData.critic.quality_score * 100).toFixed(0) + '%';
+            }
         }
     </script>
 </body>
