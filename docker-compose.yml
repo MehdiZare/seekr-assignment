@@ -1,0 +1,27 @@
+services:
+  podcast-agent:
+    build: .
+    container_name: podcast-agent
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Mount config as read-only
+      - ./config.yaml:/app/config.yaml:ro
+      # Mount data directory for sample transcripts
+      - ./app/data:/app/app/data:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      # LangSmith tracing (optional - from .env file)
+      - LANGSMITH_TRACING=${LANGSMITH_TRACING:-false}
+      - LANGSMITH_ENDPOINT=${LANGSMITH_ENDPOINT:-https://api.smith.langchain.com}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
+      - LANGSMITH_PROJECT=${LANGSMITH_PROJECT:-pr-healthy-sustainment-69}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

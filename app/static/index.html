@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Podcast Agent - AI Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .stage-indicator {
+            transition: all 0.3s ease;
+        }
+        .stage-active {
+            background-color: #3b82f6;
+            color: white;
+        }
+        .stage-complete {
+            background-color: #10b981;
+            color: white;
+        }
+        .stage-pending {
+            background-color: #e5e7eb;
+            color: #6b7280;
+        }
+        .spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+        <!-- Header -->
+        <header class="mb-8">
+            <h1 class="text-4xl font-bold text-gray-900 mb-2">Podcast Agent</h1>
+            <p class="text-gray-600">Multi-agent AI system for podcast transcript analysis with fact-checking</p>
+        </header>
+
+        <!-- Input Section -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-2xl font-semibold mb-4">Input Transcript</h2>
+
+            <!-- Tabs -->
+            <div class="flex space-x-4 mb-4 border-b">
+                <button onclick="switchTab('sample')" id="tab-sample" class="px-4 py-2 font-medium border-b-2 border-blue-500 text-blue-600">
+                    Sample Transcripts
+                </button>
+                <button onclick="switchTab('upload')" id="tab-upload" class="px-4 py-2 font-medium text-gray-600 hover:text-gray-900">
+                    Upload File
+                </button>
+                <button onclick="switchTab('paste')" id="tab-paste" class="px-4 py-2 font-medium text-gray-600 hover:text-gray-900">
+                    Paste Text
+                </button>
+            </div>
+
+            <!-- Sample Tab -->
+            <div id="content-sample" class="tab-content">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Choose a sample:</label>
+                <select id="sample-select" class="w-full p-2 border border-gray-300 rounded-md mb-4">
+                    <option value="">Loading samples...</option>
+                </select>
+                <button onclick="analyzeSample()" class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition">
+                    Analyze Sample
+                </button>
+            </div>
+
+            <!-- Upload Tab -->
+            <div id="content-upload" class="tab-content hidden">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Upload .txt or .json file:</label>
+                <input type="file" id="file-input" accept=".txt,.json" class="w-full p-2 border border-gray-300 rounded-md mb-4">
+                <button onclick="analyzeFile()" class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition">
+                    Analyze File
+                </button>
+            </div>
+
+            <!-- Paste Tab -->
+            <div id="content-paste" class="tab-content hidden">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Paste transcript:</label>
+                <textarea id="transcript-input" rows="8" class="w-full p-3 border border-gray-300 rounded-md mb-4"
+                    placeholder="Paste podcast transcript here (minimum 100 characters)..."></textarea>
+                <button onclick="analyzeText()" class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition">
+                    Analyze Transcript
+                </button>
+            </div>
+        </div>
+
+        <!-- Progress Section -->
+        <div id="progress-section" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
+            <h2 class="text-2xl font-semibold mb-4">Processing Progress</h2>
+
+            <!-- Stage Indicators -->
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                <div id="stage-parallel" class="stage-indicator stage-pending p-3 rounded-lg text-center">
+                    <div class="font-medium text-sm">Parallel Analysis</div>
+                    <div class="text-xs mt-1">Models A & B</div>
+                </div>
+                <div id="stage-supervisor" class="stage-indicator stage-pending p-3 rounded-lg text-center">
+                    <div class="font-medium text-sm">Supervisor</div>
+                    <div class="text-xs mt-1">Model C</div>
+                </div>
+                <div id="stage-fact-check" class="stage-indicator stage-pending p-3 rounded-lg text-center">
+                    <div class="font-medium text-sm">Fact Checking</div>
+                    <div class="text-xs mt-1">Model D</div>
+                </div>
+                <div id="stage-critic" class="stage-indicator stage-pending p-3 rounded-lg text-center">
+                    <div class="font-medium text-sm">Critic Review</div>
+                    <div class="text-xs mt-1">Quality Check</div>
+                </div>
+                <div id="stage-complete" class="stage-indicator stage-pending p-3 rounded-lg text-center">
+                    <div class="font-medium text-sm">Complete</div>
+                    <div class="text-xs mt-1">Final Results</div>
+                </div>
+            </div>
+
+            <!-- Messages -->
+            <div class="bg-gray-50 rounded-lg p-4">
+                <h3 class="font-medium mb-2 flex items-center">
+                    <div class="spinner mr-2"></div>
+                    Processing...
+                </h3>
+                <div id="progress-messages" class="text-sm text-gray-600 space-y-1"></div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results-section" class="hidden">
+            <!-- Summary -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h2 class="text-2xl font-semibold mb-4">Summary</h2>
+                <p id="result-summary" class="text-gray-700 mb-4"></p>
+
+                <div class="grid md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <h3 class="font-semibold mb-2">Main Topics</h3>
+                        <ul id="result-topics" class="list-disc list-inside space-y-1 text-gray-700"></ul>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold mb-2">Key Takeaways</h3>
+                        <ul id="result-takeaways" class="list-disc list-inside space-y-1 text-gray-700"></ul>
+                    </div>
+                </div>
+
+                <div id="quotes-section" class="mb-4"></div>
+
+                <div class="flex items-center space-x-4 text-sm">
+                    <div>
+                        <span class="font-medium">Confidence:</span>
+                        <span id="result-confidence" class="text-blue-600 font-semibold"></span>
+                    </div>
+                    <div>
+                        <span class="font-medium">Critic Iterations:</span>
+                        <span id="result-iterations" class="text-gray-700"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fact Check Results -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-2xl font-semibold mb-4">Fact-Checked Claims</h2>
+                <div id="fact-check-table" class="overflow-x-auto"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentEventSource = null;
+
+        // Load samples on page load
+        document.addEventListener('DOMContentLoaded', loadSamples);
+
+        async function loadSamples() {
+            try {
+                const response = await fetch('/api/samples');
+                const data = await response.json();
+                const select = document.getElementById('sample-select');
+
+                if (data.samples.length === 0) {
+                    select.innerHTML = '<option value="">No samples available</option>';
+                } else {
+                    select.innerHTML = '<option value="">Select a sample...</option>' +
+                        data.samples.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+                }
+            } catch (error) {
+                console.error('Error loading samples:', error);
+            }
+        }
+
+        function switchTab(tab) {
+            // Update tab buttons
+            ['sample', 'upload', 'paste'].forEach(t => {
+                const btn = document.getElementById(`tab-${t}`);
+                const content = document.getElementById(`content-${t}`);
+                if (t === tab) {
+                    btn.classList.add('border-blue-500', 'text-blue-600');
+                    btn.classList.remove('text-gray-600');
+                    content.classList.remove('hidden');
+                } else {
+                    btn.classList.remove('border-blue-500', 'text-blue-600');
+                    btn.classList.add('text-gray-600');
+                    content.classList.add('hidden');
+                }
+            });
+        }
+
+        async function analyzeSample() {
+            const select = document.getElementById('sample-select');
+            const sampleId = select.value;
+            if (!sampleId) {
+                alert('Please select a sample');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/samples/${sampleId}`);
+                const data = await response.json();
+                startAnalysis(data);
+            } catch (error) {
+                alert('Error loading sample: ' + error.message);
+            }
+        }
+
+        async function analyzeFile() {
+            const fileInput = document.getElementById('file-input');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Please select a file');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            startSSEAnalysis('/api/analyze/file', formData, true);
+        }
+
+        function analyzeText() {
+            const textarea = document.getElementById('transcript-input');
+            const transcript = textarea.value.trim();
+            if (transcript.length < 100) {
+                alert('Transcript must be at least 100 characters');
+                return;
+            }
+
+            startAnalysis({ transcript });
+        }
+
+        function startAnalysis(data) {
+            startSSEAnalysis('/api/analyze', JSON.stringify(data), false);
+        }
+
+        function startSSEAnalysis(url, body, isFormData) {
+            // Show progress section
+            document.getElementById('progress-section').classList.remove('hidden');
+            document.getElementById('results-section').classList.add('hidden');
+            document.getElementById('progress-messages').innerHTML = '';
+            resetStages();
+
+            // Close existing connection
+            if (currentEventSource) {
+                currentEventSource.close();
+            }
+
+            // Use fetch with streaming for POST requests
+            const fetchOptions = {
+                method: 'POST',
+                body: body
+            };
+
+            if (!isFormData) {
+                fetchOptions.headers = { 'Content-Type': 'application/json' };
+            }
+
+            fetch(url, fetchOptions)
+                .then(response => {
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+
+                    function readStream() {
+                        reader.read().then(({ done, value }) => {
+                            if (done) {
+                                console.log('Stream complete');
+                                return;
+                            }
+
+                            const chunk = decoder.decode(value);
+                            const lines = chunk.split('\n');
+
+                            lines.forEach(line => {
+                                if (line.startsWith('data: ')) {
+                                    const data = JSON.parse(line.substring(6));
+                                    handleSSEEvent(data);
+                                }
+                            });
+
+                            readStream();
+                        });
+                    }
+
+                    readStream();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    addMessage('Error: ' + error.message, true);
+                });
+        }
+
+        function handleSSEEvent(data) {
+            const { stage, message, node, result } = data;
+
+            // Add message
+            if (message) {
+                addMessage(message);
+            }
+
+            // Update stage indicators
+            if (stage) {
+                updateStage(stage);
+            }
+
+            // Handle completion
+            if (stage === 'complete' && result) {
+                displayResults(result);
+            } else if (stage === 'error') {
+                addMessage(message, true);
+            }
+        }
+
+        function addMessage(message, isError = false) {
+            const messagesDiv = document.getElementById('progress-messages');
+            const messageEl = document.createElement('div');
+            messageEl.textContent = '• ' + message;
+            if (isError) messageEl.classList.add('text-red-600');
+            messagesDiv.appendChild(messageEl);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function resetStages() {
+            ['parallel', 'supervisor', 'fact-check', 'critic', 'complete'].forEach(stage => {
+                const el = document.getElementById(`stage-${stage}`);
+                el.className = 'stage-indicator stage-pending p-3 rounded-lg text-center';
+            });
+        }
+
+        function updateStage(stage) {
+            const stageMap = {
+                'started': 'parallel',
+                'model_a_complete': 'parallel',
+                'model_b_complete': 'parallel',
+                'supervisor_complete': 'supervisor',
+                'fact_check_complete': 'fact-check',
+                'critic_complete': 'critic',
+                'complete': 'complete'
+            };
+
+            const mappedStage = stageMap[stage];
+            if (!mappedStage) return;
+
+            const el = document.getElementById(`stage-${mappedStage}`);
+            if (stage === 'complete') {
+                // Mark all as complete
+                Object.values(stageMap).forEach(s => {
+                    const stageEl = document.getElementById(`stage-${s}`);
+                    stageEl.className = 'stage-indicator stage-complete p-3 rounded-lg text-center';
+                });
+            } else {
+                el.className = 'stage-indicator stage-complete p-3 rounded-lg text-center';
+            }
+        }
+
+        function displayResults(result) {
+            // Hide progress section with spinner
+            document.getElementById('progress-section').classList.add('hidden');
+
+            // Show results section
+            document.getElementById('results-section').classList.remove('hidden');
+
+            // Summary
+            document.getElementById('result-summary').textContent = result.summary.final_summary;
+
+            // Topics
+            const topicsList = document.getElementById('result-topics');
+            topicsList.innerHTML = result.summary.main_topics.map(t => `<li>${t}</li>`).join('');
+
+            // Takeaways
+            const takeawaysList = document.getElementById('result-takeaways');
+            takeawaysList.innerHTML = result.summary.key_takeaways.map(t => `<li>${t}</li>`).join('');
+
+            // Quotes
+            if (result.summary.notable_quotes && result.summary.notable_quotes.length > 0) {
+                const quotesDiv = document.getElementById('quotes-section');
+                quotesDiv.innerHTML = '<h3 class="font-semibold mb-2">Notable Quotes</h3>' +
+                    result.summary.notable_quotes.map(q =>
+                        `<blockquote class="border-l-4 border-blue-500 pl-4 mb-2 italic text-gray-700">
+                            "${q.text}" ${q.speaker ? `— ${q.speaker}` : ''}
+                        </blockquote>`
+                    ).join('');
+            }
+
+            // Confidence and iterations
+            document.getElementById('result-confidence').textContent =
+                (result.confidence_in_analysis * 100).toFixed(0) + '%';
+            document.getElementById('result-iterations').textContent = result.critic_iterations;
+
+            // Fact check table
+            const tableDiv = document.getElementById('fact-check-table');
+            tableDiv.innerHTML = `
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="p-2 text-left">Claim</th>
+                            <th class="p-2 text-left">Status</th>
+                            <th class="p-2 text-left">Confidence</th>
+                            <th class="p-2 text-left">Sources</th>
+                            <th class="p-2 text-left">Reasoning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${result.fact_check.verified_claims.map(claim => `
+                            <tr class="border-t">
+                                <td class="p-2">${claim.claim}</td>
+                                <td class="p-2">
+                                    <span class="px-2 py-1 rounded text-xs ${getStatusColor(claim.verification_status)}">
+                                        ${claim.verification_status}
+                                    </span>
+                                </td>
+                                <td class="p-2">${(claim.confidence * 100).toFixed(0)}%</td>
+                                <td class="p-2">
+                                    ${claim.sources.map(s =>
+                                        `<a href="${s.url}" target="_blank" class="text-blue-600 hover:underline block">${s.title}</a>`
+                                    ).join('')}
+                                </td>
+                                <td class="p-2 text-xs text-gray-600">${claim.reasoning}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function getStatusColor(status) {
+            const colors = {
+                'verified': 'bg-green-100 text-green-800',
+                'partially_verified': 'bg-yellow-100 text-yellow-800',
+                'unverified': 'bg-gray-100 text-gray-800',
+                'false': 'bg-red-100 text-red-800'
+            };
+            return colors[status] || 'bg-gray-100 text-gray-800';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+# Development files
+.venv/
+.vscode/
+.idea/
+.claude/
+*.pyc
+__pycache__/
+
+# Git files
+.git/
+.gitignore
+
+# Documentation
+README.md
+docs/
+
+# Docker files (not needed on Heroku)
+Dockerfile
+docker-compose.yml
+
+# Environment files
+.env
+.env.example
+
+# Tests
+tests/
+test_*.py
+*_test.py
+
+# Other
+*.log
+.DS_Store
