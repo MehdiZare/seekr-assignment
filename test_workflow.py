@@ -1,10 +1,24 @@
 #!/usr/bin/env python3
-"""Test the new supervisor workflow."""
+"""Test the new supervisor workflow.
+
+This test requires a running local server. Set RUN_LOCAL_API_TESTS=true to enable.
+"""
 
 import json
+import os
 import sys
+
+import pytest
 import requests
 
+# Check if local API integration tests should run
+RUN_LOCAL_API_TESTS = os.getenv("RUN_LOCAL_API_TESTS", "false").lower() in ("true", "1", "yes")
+
+
+@pytest.mark.skipif(
+    not RUN_LOCAL_API_TESTS,
+    reason="Local API tests require RUN_LOCAL_API_TESTS=true and running server at localhost:8000"
+)
 def test_workflow():
     """Test the workflow with ep001 sample."""
     # Load sample data
@@ -21,7 +35,7 @@ def test_workflow():
     if response.status_code != 200:
         print(f"❌ Error: HTTP {response.status_code}")
         print(response.text)
-        return False
+        pytest.fail(f"Expected status 200, got {response.status_code}")
 
     # Process SSE stream
     event_count = 0
@@ -85,14 +99,14 @@ def test_workflow():
                         print(f"  Claims Verified: {len(result['fact_check'].get('verified_claims', []))}")
                         print(f"  Reliability: {result['fact_check'].get('overall_reliability', 0):.2%}")
 
-                    return True
+                    return  # Test passes
 
                 # Stop after max events for quick test
                 if event_count >= max_events and stage != 'complete':
                     print(f"\n⏸️  Stopping after {max_events} events for quick test")
                     print("✓ SSE events are flowing correctly!")
                     print("✓ New event structure is working!")
-                    return True
+                    return  # Test passes
 
             except json.JSONDecodeError as e:
                 print(f"⚠️  JSON decode error: {e}")
@@ -102,12 +116,18 @@ def test_workflow():
                 continue
 
     print(f"\n✓ Processed {event_count} events total")
-    return True
+    # Test passes if we received any events
+    assert event_count > 0, "No events received from SSE stream"
 
 if __name__ == "__main__":
+    # When run directly (not via pytest), temporarily enable the test
+    if not RUN_LOCAL_API_TESTS:
+        print("💡 Note: Set RUN_LOCAL_API_TESTS=true to run this test via pytest")
+        print("   Running in direct execution mode...\n")
+
     try:
-        success = test_workflow()
-        sys.exit(0 if success else 1)
+        test_workflow()
+        sys.exit(0)
     except KeyboardInterrupt:
         print("\n\n⏹️  Test interrupted by user")
         sys.exit(0)

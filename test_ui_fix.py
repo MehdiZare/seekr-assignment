@@ -1,10 +1,24 @@
 #!/usr/bin/env python3
-"""Quick test to verify UI fix - checks if analysis starts without errors."""
+"""Quick test to verify UI fix - checks if analysis starts without errors.
+
+This test requires a running local server. Set RUN_LOCAL_API_TESTS=true to enable.
+"""
 
 import json
-import requests
+import os
 import sys
 
+import pytest
+import requests
+
+# Check if local API integration tests should run
+RUN_LOCAL_API_TESTS = os.getenv("RUN_LOCAL_API_TESTS", "false").lower() in ("true", "1", "yes")
+
+
+@pytest.mark.skipif(
+    not RUN_LOCAL_API_TESTS,
+    reason="Local API tests require RUN_LOCAL_API_TESTS=true and running server at localhost:8000"
+)
 def test_ui_fix():
     """Test that analysis starts without JavaScript errors."""
     print("🧪 Testing UI Fix...")
@@ -20,7 +34,7 @@ def test_ui_fix():
 
     if response.status_code != 200:
         print(f"❌ HTTP Error: {response.status_code}")
-        return False
+        pytest.fail(f"Expected status 200, got {response.status_code}")
 
     # Check first few events
     print("\n✓ Request successful, checking SSE stream...")
@@ -47,18 +61,24 @@ def test_ui_fix():
                     print("✓ SSE events are flowing correctly")
                     print("✓ The JavaScript error has been fixed")
                     print("\n💡 You can now safely use the UI at http://localhost:8000")
-                    return True
+                    return  # Test passes
 
             except Exception as e:
                 print(f"⚠️  Event parse error: {e}")
                 continue
 
-    return True
+    # Test passes if we received any events
+    assert event_count > 0, "No events received from SSE stream"
 
 if __name__ == "__main__":
+    # When run directly (not via pytest), temporarily enable the test
+    if not RUN_LOCAL_API_TESTS:
+        print("💡 Note: Set RUN_LOCAL_API_TESTS=true to run this test via pytest")
+        print("   Running in direct execution mode...\n")
+
     try:
-        success = test_ui_fix()
-        sys.exit(0 if success else 1)
+        test_ui_fix()
+        sys.exit(0)
     except KeyboardInterrupt:
         print("\n\n⏹️  Test interrupted")
         sys.exit(0)

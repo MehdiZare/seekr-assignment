@@ -1,11 +1,25 @@
 #!/usr/bin/env python3
-"""Test real-time SSE streaming to verify events arrive as they occur."""
+"""Test real-time SSE streaming to verify events arrive as they occur.
+
+This test requires a running local server. Set RUN_LOCAL_API_TESTS=true to enable.
+"""
 
 import json
-import requests
-import time
+import os
 import sys
+import time
 
+import pytest
+import requests
+
+# Check if local API integration tests should run
+RUN_LOCAL_API_TESTS = os.getenv("RUN_LOCAL_API_TESTS", "false").lower() in ("true", "1", "yes")
+
+
+@pytest.mark.skipif(
+    not RUN_LOCAL_API_TESTS,
+    reason="Local API tests require RUN_LOCAL_API_TESTS=true and running server at localhost:8000"
+)
 def test_realtime_streaming():
     """Test that SSE events arrive in real-time, not in batch."""
     print('🧪 Testing Real-Time SSE Streaming')
@@ -23,11 +37,11 @@ def test_realtime_streaming():
         response = requests.post(url, json=sample_data, stream=True, timeout=60)
     except Exception as e:
         print(f'❌ Connection error: {e}')
-        return False
+        pytest.fail(f"Connection error: {e}")
 
     if response.status_code != 200:
         print(f'❌ HTTP Error: {response.status_code}')
-        return False
+        pytest.fail(f"Expected status 200, got {response.status_code}")
 
     print('✓ Request accepted, monitoring SSE stream:\n')
 
@@ -82,19 +96,24 @@ def test_realtime_streaming():
                             print(f'   ✓ STREAMING: Events spread over time (max gap: {max_delay:.1f}s, avg: {avg_delay:.2f}s)')
                             print('   ✅ Real-time streaming IS working')
 
-                    return True
+                    return  # Test passes
 
             except Exception as e:
                 print(f'⚠️  Parse error: {e}')
                 continue
 
     print('\n⚠️  Stream ended before completion event')
-    return False
+    pytest.fail("Stream ended before completion event")
 
 if __name__ == '__main__':
+    # When run directly (not via pytest), temporarily enable the test
+    if not RUN_LOCAL_API_TESTS:
+        print("💡 Note: Set RUN_LOCAL_API_TESTS=true to run this test via pytest")
+        print("   Running in direct execution mode...\n")
+
     try:
-        success = test_realtime_streaming()
-        sys.exit(0 if success else 1)
+        test_realtime_streaming()
+        sys.exit(0)
     except KeyboardInterrupt:
         print('\n\n⏹️  Test interrupted')
         sys.exit(0)

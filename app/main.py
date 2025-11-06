@@ -104,7 +104,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "error_type": "RequestValidationError",
             "url": str(request.url),
             "errors": exc.errors(),
-            "request_body": request_body.decode("utf-8") if request_body else None,
+            "request_body_size": len(request_body) if request_body else 0,
         },
     )
     return JSONResponse(

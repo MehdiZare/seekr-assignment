@@ -14,7 +14,7 @@ class SummaryOutput(BaseModel):
         ...,
         description="Comprehensive 200-300 word summary of the podcast episode",
         min_length=200,
-        max_length=400,
+        max_length=300,
     )
     core_theme: str = Field(
         ...,
