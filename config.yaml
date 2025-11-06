@@ -42,3 +42,7 @@ app:
   max_retries: 3
   critic_loops: 2
   stream_delay_ms: 100
+  max_supervisor_iterations: 15
+  max_fact_check_iterations: 10
+  url_validation_timeout: 3
+  workflow_version: "v2"

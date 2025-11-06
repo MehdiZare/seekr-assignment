@@ -1,11 +1,11 @@
 """LangGraph workflow definition for podcast analysis."""
 
-import sys
 from langgraph.graph import END, StateGraph
 
 # Import supervisor-based workflow
 from app.agents.supervisor import supervisor_node
 
+from app.constants import get_workflow_version
 from app.models.state import AgentState
 from app.utils.logger import get_logger
 
@@ -113,9 +113,10 @@ async def stream_analysis(
     # Stream fine-grained events (tool calls, LLM calls, etc.)
     # version="v2" is the current stable event streaming format
     event_count = 0
+    workflow_version = get_workflow_version()
 
     try:
-        async for event in workflow.astream_events(initial_state, version="v2"):
+        async for event in workflow.astream_events(initial_state, version=workflow_version):
             event_type = event.get("event")
             event_name = event.get("name", "")
 

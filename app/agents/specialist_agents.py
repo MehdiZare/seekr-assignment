@@ -9,14 +9,13 @@ These agents are called by the supervisor agent as tools to perform specialized 
 import time
 from typing import Any
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, ToolMessage
-from langchain_openai import ChatOpenAI
 from langsmith import traceable
 
 from app.agents.nodes import _create_llm_with_fallback, _invoke_llm_with_failover
 from app.agents.tools import create_search_tools, validate_and_filter_search_results
 from app.config import get_config
+from app.constants import FACT_CHECK_MODEL_KEY, get_max_fact_check_iterations
 from app.models.outputs import (
     FactCheckOutput,
     NotesOutput,
@@ -357,7 +356,7 @@ def fact_check_claims(
     )
 
     # Create LLM instance with tools and failover (Primary: Llama Maverick, Fallback: Claude Haiku)
-    primary_llm, fallback_llm = _create_llm_with_fallback("model_d")
+    primary_llm, fallback_llm = _create_llm_with_fallback(FACT_CHECK_MODEL_KEY)
     config = get_config()
     max_retries = config.app_settings.get("max_retries", 3)
 
@@ -384,17 +383,17 @@ def fact_check_claims(
 
     messages = [HumanMessage(content=prompt)]
 
+    # Tool calling loop
+    max_iterations = get_max_fact_check_iterations()
+
     logger.info(
         "Starting fact-checking with search tools",
         extra={
             "agent": "Fact Checking Agent",
             "stage": "tool_calling_start",
-            "max_iterations": 10,
+            "max_iterations": max_iterations,
         },
     )
-
-    # Tool calling loop
-    max_iterations = 10
     tool_call_log = []
 
     for iteration in range(max_iterations):
@@ -482,12 +481,6 @@ def fact_check_claims(
                     "stage": "tool_calling_complete",
                 },
             )
-            if state_callback:
-                state_callback({
-                    "agent": "Fact Checking Agent",
-                    "status": "running",
-                    "message": "Finalizing fact-check results..."
-                })
             break
 
         # Process each tool call

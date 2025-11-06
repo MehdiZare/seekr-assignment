@@ -7,6 +7,7 @@ from langchain_core.tools import Tool
 from langchain_tavily._utilities import TavilySearchAPIWrapper
 
 from app.config import get_config
+from app.constants import get_url_validation_timeout
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -24,12 +25,12 @@ def create_search_tools() -> list[Tool]:
     # Tavily Search (preferred for comprehensive results)
     if config.settings.tavily_api_key:
         tavily_config = config.search_tools.get("tavily", {})
-        tavliy_api_wrapper = TavilySearchAPIWrapper(tavily_api_key=config.settings.tavily_api_key)
+        tavily_api_wrapper = TavilySearchAPIWrapper(tavily_api_key=config.settings.tavily_api_key)
 
         tavily_tool = TavilySearch(
             max_results=tavily_config.get("max_results", 10),
             search_depth=tavily_config.get("search_depth", "advanced"),
-            api_wrapper=tavliy_api_wrapper
+            api_wrapper=tavily_api_wrapper
         )
         tools.append(tavily_tool)
 
@@ -47,13 +48,16 @@ def create_search_tools() -> list[Tool]:
     if not tools:
         raise ValueError(
             "No search tools available. Please configure at least one search API key "
-            "(TAVILY_API_KEY, SERPER_API_KEY, or BRAVE_API_KEY)"
+            "(TAVILY_API_KEY or BRAVE_API_KEY)"
         )
 
     return tools
 
 
-def validate_and_filter_search_results(tool_result: Any, timeout: int = 3) -> Any:
+def validate_and_filter_search_results(
+    tool_result: dict[str, Any] | str,
+    timeout: int | None = None
+) -> dict[str, Any] | str:
     """
     Validate URLs in search results and remove inaccessible ones (404s, timeouts).
 
@@ -63,13 +67,16 @@ def validate_and_filter_search_results(tool_result: Any, timeout: int = 3) -> An
 
     Args:
         tool_result: Raw result from search tool
-        timeout: Timeout in seconds for URL validation (default: 3)
+        timeout: Timeout in seconds for URL validation (default: from config)
 
     Returns:
         Filtered search results with only valid URLs
     """
     import requests
     from requests.exceptions import RequestException
+
+    if timeout is None:
+        timeout = get_url_validation_timeout()
 
     def is_url_accessible(url: str) -> bool:
         """Check if URL is accessible (not 404 or error)."""

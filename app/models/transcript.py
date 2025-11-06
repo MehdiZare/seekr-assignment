@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TranscriptInput(BaseModel):
@@ -13,7 +13,7 @@ class TranscriptInput(BaseModel):
         description="The full podcast transcript text",
         min_length=100,
     )
-    metadata: dict | None = Field(
+    metadata: dict[str, Any] | None = Field(
         None,
         description="Optional metadata about the podcast (title, date, speakers, etc.)",
     )
@@ -35,8 +35,8 @@ class TranscriptInput(BaseModel):
             return "\n".join(lines)
         return v
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "transcript": "Speaker 1: Welcome to Tech Talk...",
                 "metadata": {
@@ -46,3 +46,4 @@ class TranscriptInput(BaseModel):
                 },
             }
         }
+    )

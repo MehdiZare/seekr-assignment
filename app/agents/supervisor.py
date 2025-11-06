@@ -8,7 +8,6 @@ The supervisor is an Editor-in-Chief that manages the workflow by:
 """
 
 import json
-import sys
 import time
 from typing import Any
 
@@ -18,6 +17,7 @@ from langsmith import traceable
 from app.agents.nodes import _create_llm_with_fallback
 from app.agents.supervisor_tools import create_supervisor_tools
 from app.config import get_config
+from app.constants import SUPERVISOR_MODEL_KEY, get_max_supervisor_iterations
 from app.models.state import AgentState
 from app.utils.logger import get_logger
 
@@ -82,7 +82,7 @@ def supervisor_node(state: AgentState) -> dict:
     )
 
     # Create supervisor LLM with tools (primary: Llama Maverick, fallback: Claude Haiku)
-    primary_llm, fallback_llm = _create_llm_with_fallback("model_c")
+    primary_llm, fallback_llm = _create_llm_with_fallback(SUPERVISOR_MODEL_KEY)
     tools = create_supervisor_tools()
     primary_llm_with_tools = primary_llm.bind_tools(tools)
     fallback_llm_with_tools = fallback_llm.bind_tools(tools) if fallback_llm else None
@@ -105,7 +105,7 @@ Begin the workflow.""")
     ]
 
     # Tool calling loop
-    max_iterations = 15  # Allow enough iterations for all 3 tools + retries
+    max_iterations = get_max_supervisor_iterations()  # Allow enough iterations for all 3 tools + retries
     progress_messages = []
     agent_outputs = {}
     tool_call_count = 0
@@ -132,6 +132,7 @@ Begin the workflow.""")
         )
 
         # Invoke LLM with failover
+        response = None
         try:
             logger.info(
                 "Invoking primary supervisor LLM",
@@ -142,7 +143,6 @@ Begin the workflow.""")
                 },
             )
             response = primary_llm_with_tools.invoke(messages)
-            messages.append(response)
 
         except Exception as primary_error:
             # Primary LLM failed - try fallback if available
@@ -152,9 +152,7 @@ Begin the workflow.""")
                     extra={
                         "agent": "Supervisor",
                         "iteration": iteration + 1,
-                        "error_type": type(primary_error).__name__,
-                        "error_message": str(primary_error),
-                        "failover_triggered": False,
+                        "error": str(primary_error),
                         "stage": "supervisor_llm_error_no_fallback",
                     },
                 )
@@ -165,27 +163,14 @@ Begin the workflow.""")
                 extra={
                     "agent": "Supervisor",
                     "iteration": iteration + 1,
-                    "error_type": type(primary_error).__name__,
-                    "error_message": str(primary_error),
-                    "failover_triggered": True,
-                    "failover_reason": type(primary_error).__name__,
+                    "error": str(primary_error),
                     "stage": "supervisor_llm_failover",
                 },
             )
 
             try:
                 response = fallback_llm_with_tools.invoke(messages)
-                messages.append(response)
-
-                logger.info(
-                    "Supervisor fallback LLM succeeded",
-                    extra={
-                        "agent": "Supervisor",
-                        "iteration": iteration + 1,
-                        "failover_triggered": True,
-                        "stage": "supervisor_llm_success_fallback",
-                    },
-                )
+                logger.info("Supervisor fallback LLM succeeded", extra={"agent": "Supervisor", "iteration": iteration + 1})
 
             except Exception as fallback_error:
                 logger.error(
@@ -193,15 +178,14 @@ Begin the workflow.""")
                     extra={
                         "agent": "Supervisor",
                         "iteration": iteration + 1,
-                        "primary_error_type": type(primary_error).__name__,
-                        "primary_error_message": str(primary_error),
-                        "fallback_error_type": type(fallback_error).__name__,
-                        "fallback_error_message": str(fallback_error),
-                        "failover_triggered": True,
+                        "primary_error": str(primary_error),
+                        "fallback_error": str(fallback_error),
                         "stage": "supervisor_llm_error_both_failed",
                     },
                 )
                 raise fallback_error
+
+        messages.append(response)
 
         # Check for tool calls
         if not response.tool_calls:

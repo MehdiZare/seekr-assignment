@@ -1,7 +1,7 @@
 """LangGraph state definition for the podcast analysis workflow."""
 
 from operator import add
-from typing import Annotated, TypedDict
+from typing import Annotated, Any, TypedDict
 
 
 class AgentState(TypedDict, total=False):
@@ -16,11 +16,11 @@ class AgentState(TypedDict, total=False):
 
     # Input
     transcript: str
-    metadata: dict | None
+    metadata: dict[str, Any] | None
     session_id: str  # Session ID for tracking and logging
 
     # Supervisor workflow output
-    supervisor_output: dict  # Contains: summary, notes, fact_check, metadata
+    supervisor_output: dict[str, Any]  # Contains: summary, notes, fact_check, metadata
 
     # Progress tracking for SSE (accumulates messages from all nodes)
     current_stage: str
