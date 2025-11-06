@@ -609,7 +609,7 @@
 
             // Summary (from summarizing agent)
             if (result.summary && result.summary.summary) {
-                document.getElementById('result-summary').innerHTML = parseMarkdown(result.summary.summary);
+                document.getElementById('result-summary').textContent = result.summary.summary;
             }
 
             // Topics (from notes agent)
