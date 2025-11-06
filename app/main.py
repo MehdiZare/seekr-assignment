@@ -22,8 +22,7 @@ config = get_config()
 config.setup_langsmith()
 
 # Debug: Confirm LangSmith env vars are set before langsmith imports
-print(f"[DEBUG] LangSmith setup called early - LANGCHAIN_TRACING_V2={os.getenv('LANGCHAIN_TRACING_V2')}, project={os.getenv('LANGCHAIN_PROJECT')}")
-sys.stdout.flush()
+# Note: JSON logger not yet initialized at this point, but this is captured in lifespan logging
 
 # Now set up JSON logging for CloudWatch
 from app.utils.logger import (
@@ -177,9 +176,13 @@ async def generate_sse_events(
     Yields:
         SSE formatted events with detailed agent progress, reasoning, and tool calls
     """
-    import sys
-    print(f"[DEBUG] generate_sse_events: ENTERED - session_id={session_id}, transcript_length={len(transcript)}")
-    sys.stdout.flush()
+    logger.debug(
+        "generate_sse_events entered",
+        extra={
+            "session_id": session_id,
+            "transcript_length": len(transcript)
+        }
+    )
 
     config = get_config()
     stream_delay = config.app_settings.get("stream_delay_ms", 100) / 1000.0
@@ -190,8 +193,7 @@ async def generate_sse_events(
 
     try:
         # Log workflow start with session info
-        print("[DEBUG] generate_sse_events: About to log 'Analysis workflow started'")
-        sys.stdout.flush()
+        logger.debug("About to log analysis workflow started")
 
         logger.info(
             "Analysis workflow started",
@@ -203,8 +205,7 @@ async def generate_sse_events(
         )
 
         # Send initial event
-        print("[DEBUG] generate_sse_events: About to send 'started' event")
-        sys.stdout.flush()
+        logger.debug("About to send 'started' event")
         logger.info("SSE: Sending 'started' event", extra={"stage": "started"})
         yield f"data: {json.dumps({'stage': 'started', 'message': 'Starting podcast analysis workflow...'})}\n\n"
         await asyncio.sleep(stream_delay)
@@ -221,14 +222,18 @@ async def generate_sse_events(
         }
 
         # Stream the workflow (receives fine-grained events from astream_events)
-        print("[DEBUG] generate_sse_events: About to call stream_analysis()")
-        sys.stdout.flush()
+        logger.debug("About to call stream_analysis()")
 
         async for event in stream_analysis(transcript, metadata, session_id):
             event_type = event.get("event")
             event_name = event.get("name", "")
-            print(f"[DEBUG] generate_sse_events: Received event - type={event_type}, name={event_name}")
-            sys.stdout.flush()
+            logger.debug(
+                "Received event from stream_analysis",
+                extra={
+                    "event_type": event_type,
+                    "event_name": event_name
+                }
+            )
 
             # Handle tool start events (agent beginning work)
             if event_type == "on_tool_start":
@@ -400,9 +405,6 @@ async def generate_sse_events(
         import traceback
 
         error_msg = f"CRITICAL ERROR in generate_sse_events: {type(e).__name__}: {str(e)}"
-        print(f"[ERROR] {error_msg}")
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
-        sys.stdout.flush()
 
         logger.error(
             "Error in analysis workflow",
@@ -581,13 +583,17 @@ async def download_file(filename: str):
 
     # Validate the file path to prevent directory traversal
     try:
-        file_path = file_path.resolve()
-        output_dir = output_dir.resolve()
+        # Resolve both paths to absolute paths and check containment
+        resolved_file_path = file_path.resolve()
+        resolved_output_dir = output_dir.resolve()
 
-        if not str(file_path).startswith(str(output_dir)):
+        # Use relative_to() which raises ValueError if file_path is not within output_dir
+        try:
+            resolved_file_path.relative_to(resolved_output_dir)
+        except ValueError:
             raise HTTPException(status_code=400, detail="Invalid file path")
 
-        if not file_path.exists():
+        if not resolved_file_path.exists():
             raise HTTPException(status_code=404, detail="File not found")
 
         # Determine media type
@@ -599,7 +605,7 @@ async def download_file(filename: str):
             media_type = 'application/octet-stream'
 
         return FileResponse(
-            path=file_path,
+            path=resolved_file_path,
             media_type=media_type,
             filename=filename,
         )

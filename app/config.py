@@ -5,8 +5,12 @@ from pathlib import Path
 from typing import Any, Dict
 
 import yaml
+from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Load environment variables from .env file before Settings instantiation
+load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -102,18 +106,16 @@ class Config:
             raise ValueError(f"Unknown search tool: {tool}")
 
     def setup_langsmith(self) -> None:
-        """Set up LangSmith tracing if enabled."""
+        """Set up LangSmith tracing if enabled.
+
+        Note: Logging of LangSmith status is handled in the application lifespan
+        to ensure proper JSON logging is active.
+        """
         if self.settings.langsmith_tracing and self.settings.langsmith_api_key:
             os.environ["LANGCHAIN_TRACING_V2"] = "true"
             os.environ["LANGCHAIN_ENDPOINT"] = self.settings.langsmith_endpoint
             os.environ["LANGCHAIN_API_KEY"] = self.settings.langsmith_api_key
             os.environ["LANGCHAIN_PROJECT"] = self.settings.langsmith_project
-
-            # Verify LangSmith is configured
-            print(f"[CONFIG] LangSmith tracing enabled - Project: {self.settings.langsmith_project}")
-        else:
-            reason = "disabled" if not self.settings.langsmith_tracing else "missing API key"
-            print(f"[CONFIG] LangSmith tracing not active - Reason: {reason}")
 
 
 # Global config instance
