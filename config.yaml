@@ -1,26 +1,26 @@
 # Model Configuration
 models:
-  # Supervisor model - Primary: Llama Maverick, Fallback: Claude Haiku
+  # Supervisor model - Primary: Llama Maverick, Fallback: OpenAI GPT-5 Nano
   model_c:
     provider: "llama"
     name: "Llama-4-Maverick-17B-128E-Instruct-FP8"
     temperature: 0.2
     max_tokens: 4000
     fallback:
-      provider: "anthropic"
-      name: "claude-haiku-4-5"
+      provider: "openai"
+      name: "gpt-5-nano-2025-08-07"
       temperature: 0.2
       max_tokens: 4000
 
-  # Fact-checking model - Primary: Llama Maverick, Fallback: Claude Haiku
+  # Fact-checking model - Primary: Llama Maverick, Fallback: OpenAI GPT-5 Mini
   model_d:
     provider: "llama"
     name: "Llama-4-Maverick-17B-128E-Instruct-FP8"
     temperature: 0.1
     max_tokens: 8000
     fallback:
-      provider: "anthropic"
-      name: "claude-haiku-4-5"
+      provider: "openai"
+      name: "gpt-5-mini-2025-08-07"
       temperature: 0.1
       max_tokens: 8000
 

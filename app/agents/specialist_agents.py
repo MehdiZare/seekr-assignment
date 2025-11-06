@@ -58,7 +58,7 @@ IMPORTANT: Respond with valid JSON matching this exact schema:
 }}
 
 Guidelines:
-- The summary MUST be between 200-400 characters
+- The summary MUST be between 1200-2400 characters (approximately 200-400 words)
 - Focus on what makes this episode valuable and interesting
 - Capture the tone and style of the conversation
 - Include at least 2 key discussions
