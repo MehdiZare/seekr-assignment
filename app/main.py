@@ -358,7 +358,7 @@ async def generate_sse_events(
             "metadata": {
                 "total_tool_calls": supervisor_output.get("total_tool_calls", 0),
                 "agents_invoked": supervisor_output.get("agents_invoked", 0),
-                "processing_messages": final_state.get("messages", []),
+                "progress_messages": final_state.get("progress_messages", []),
             }
         }
 

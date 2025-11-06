@@ -54,7 +54,7 @@ Guidelines:
 
 
 @traceable(name="supervisor_node")
-def supervisor_node(state: AgentState) -> dict:
+async def supervisor_node(state: AgentState) -> dict:
     """Supervisor node that orchestrates specialist agents using tool calling.
 
     The supervisor analyzes the transcript and intelligently coordinates
@@ -69,7 +69,7 @@ def supervisor_node(state: AgentState) -> dict:
     Returns:
         Updated state with:
         - supervisor_output: Consolidated results from all agents
-        - messages: Progress updates for UI
+        - progress_messages: Progress updates for UI
         - current_stage: Current processing stage
     """
     logger.info(
@@ -81,7 +81,7 @@ def supervisor_node(state: AgentState) -> dict:
         },
     )
 
-    # Create supervisor LLM with tools (primary: Llama Maverick, fallback: Claude Haiku)
+    # Create supervisor LLM with tools (primary: Llama Maverick, fallback: OpenAI GPT-5)
     primary_llm, fallback_llm = _create_llm_with_fallback(SUPERVISOR_MODEL_KEY)
     tools = create_supervisor_tools()
     primary_llm_with_tools = primary_llm.bind_tools(tools)
@@ -142,7 +142,7 @@ Begin the workflow.""")
                     "stage": "supervisor_llm_invoke_primary",
                 },
             )
-            response = primary_llm_with_tools.invoke(messages)
+            response = await primary_llm_with_tools.ainvoke(messages)
 
         except Exception as primary_error:
             # Primary LLM failed - try fallback if available
@@ -169,7 +169,7 @@ Begin the workflow.""")
             )
 
             try:
-                response = fallback_llm_with_tools.invoke(messages)
+                response = await fallback_llm_with_tools.ainvoke(messages)
                 logger.info("Supervisor fallback LLM succeeded", extra={"agent": "Supervisor", "iteration": iteration + 1})
 
             except Exception as fallback_error:
@@ -268,7 +268,7 @@ Begin the workflow.""")
                         },
                     )
 
-                    tool_result = tool.invoke(tool_args)
+                    tool_result = await tool.ainvoke(tool_args)
                     tool_duration_ms = int((time.time() - tool_start_time) * 1000)
 
                     logger.info(
@@ -435,6 +435,6 @@ Begin the workflow.""")
     # Return updated state
     return {
         "supervisor_output": consolidated_output,
-        "messages": progress_messages,
+        "progress_messages": progress_messages,
         "current_stage": "supervisor_complete",
     }

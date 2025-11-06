@@ -29,6 +29,32 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def truncate_tool_call_id(tool_call_id: str, max_length: int = 40) -> str:
+    """Truncate tool call ID to max length for OpenAI compatibility.
+
+    Llama API generates tool_call_ids up to 72 characters, but OpenAI only accepts
+    maximum 40 characters. This function truncates long IDs while maintaining
+    uniqueness using a hash suffix.
+
+    Args:
+        tool_call_id: The original tool call ID (potentially long)
+        max_length: Maximum allowed length (default 40 for OpenAI)
+
+    Returns:
+        Truncated tool call ID that fits within max_length
+    """
+    if len(tool_call_id) <= max_length:
+        return tool_call_id
+
+    # Use hash of full ID to maintain uniqueness
+    import hashlib
+    hash_suffix = hashlib.md5(tool_call_id.encode()).hexdigest()[:8]
+
+    # Keep as much of the original prefix as possible
+    prefix_len = max_length - len(hash_suffix) - 1  # -1 for underscore
+    return f"{tool_call_id[:prefix_len]}_{hash_suffix}"
+
+
 # ============================================================================
 # AGENT PROMPTS
 # ============================================================================
@@ -111,13 +137,30 @@ IMPORTANT: Respond with valid JSON matching this exact schema:
 
 Guidelines:
 - EXACTLY 5 takeaways (no more, no less)
-- Extract timestamps from the transcript when available (format: "MM:SS" or "HH:MM:SS")
 - Topics should be single words or short phrases (e.g., "remote work", "AI", "productivity")
 - Include at least 3 topics
 - Factual statements should be specific, verifiable claims (statistics, dates, company names, scientific facts)
 - Focus on factual statements that are central to the episode's message
 - Notable quotes should be memorable and shareable
 - Only return the JSON object, no additional text
+
+CRITICAL TIMESTAMP EXTRACTION RULES:
+- Timestamps are REQUIRED for ALL quotes and factual statements when present in the transcript
+- Look for these timestamp patterns near quotes:
+  * [HH:MM:SS] or [MM:SS] in brackets
+  * (HH:MM:SS) or (MM:SS) in parentheses
+  * Timestamp: HH:MM:SS
+  * Time markers like 00:15:23 before or after speaker dialogue
+- If you find ANY timestamp pattern near a quote (within ~50 characters), extract it
+- Format timestamps as "HH:MM:SS" for hours or "MM:SS" without hours
+- Only use null for timestamp if the transcript genuinely has NO timestamps at all
+- When in doubt, search more carefully for timestamps before using null
+
+Example of correct extraction:
+Transcript: "[00:15:23] Host: This product changed everything for us"
+Correct: {{"text": "This product changed everything for us", "speaker": "Host", "timestamp": "00:15:23", "context": "..."}}
+
+Do NOT use null for timestamp unless you've thoroughly verified no timestamps exist near the quote.
 """
 
 FACT_CHECKER_PROMPT = """You are a fact-checking expert with access to search tools.
@@ -583,10 +626,12 @@ async def fact_check_claims(
                     })
 
                     # Add tool result to messages
+                    # Truncate tool_call_id for OpenAI compatibility (max 40 chars)
+                    truncated_id = truncate_tool_call_id(tool_call["id"])
                     messages.append(
                         ToolMessage(
                             content=str(tool_result),
-                            tool_call_id=tool_call["id"],
+                            tool_call_id=truncated_id,
                         )
                     )
 
@@ -601,10 +646,12 @@ async def fact_check_claims(
                             "stage": "search_tool_error",
                         },
                     )
+                    # Truncate tool_call_id for OpenAI compatibility (max 40 chars)
+                    truncated_id = truncate_tool_call_id(tool_call["id"])
                     messages.append(
                         ToolMessage(
                             content=f"Error executing tool: {str(e)}",
-                            tool_call_id=tool_call["id"],
+                            tool_call_id=truncated_id,
                         )
                     )
             else:
@@ -617,10 +664,12 @@ async def fact_check_claims(
                         "stage": "tool_not_found",
                     },
                 )
+                # Truncate tool_call_id for OpenAI compatibility (max 40 chars)
+                truncated_id = truncate_tool_call_id(tool_call["id"])
                 messages.append(
                     ToolMessage(
                         content=f"Tool {tool_name} not available",
-                        tool_call_id=tool_call["id"],
+                        tool_call_id=truncated_id,
                     )
                 )
 

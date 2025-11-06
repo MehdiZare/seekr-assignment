@@ -3,6 +3,8 @@
 from operator import add
 from typing import Annotated, Any, TypedDict
 
+from langchain_core.messages import BaseMessage
+
 
 class AgentState(TypedDict, total=False):
     """State that flows through the LangGraph workflow.
@@ -24,4 +26,7 @@ class AgentState(TypedDict, total=False):
 
     # Progress tracking for SSE (accumulates messages from all nodes)
     current_stage: str
-    messages: Annotated[list[str], add]
+    progress_messages: Annotated[list[str], add]  # UI progress tracking
+
+    # LangGraph message passing (for agent-tool communication)
+    messages: Annotated[list[BaseMessage], add]  # LangGraph conversation history

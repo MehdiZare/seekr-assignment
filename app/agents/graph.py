@@ -13,11 +13,11 @@ logger = get_logger(__name__)
 
 
 def create_workflow() -> StateGraph:
-    """Create and compile the NEW supervisor-based workflow.
+    """Create and compile the supervisor-based workflow.
 
-    New workflow: START → Supervisor (coordinates specialist agents) → END
+    Simple linear workflow: START → Supervisor → END
 
-    The supervisor intelligently calls specialist agents as tools:
+    The supervisor intelligently coordinates specialist agents:
     - Summarizing Agent
     - Note Extraction Agent
     - Fact Checking Agent
@@ -105,7 +105,8 @@ async def stream_analysis(
         "metadata": metadata,
         "session_id": session_id or "",
         "current_stage": "initialized",
-        "messages": [],
+        "progress_messages": [],
+        "messages": [],  # LangGraph message history
     }
 
     workflow = create_workflow()
