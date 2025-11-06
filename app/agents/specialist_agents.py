@@ -490,6 +490,31 @@ def fact_check_claims(
         for tool_call in response.tool_calls:
             tool_name = tool_call["name"]
             tool_args = tool_call["args"]
+
+            # WORKAROUND: Fix duplicated tool names from Llama API responses
+            # The Llama API incorrectly duplicates function names in tool call responses
+            # e.g., "tavily_search" becomes "tavily_searchtavily_search"
+            original_tool_name = tool_name
+            tool = next((t for t in tools if t.name == tool_name), None)
+
+            if not tool:
+                # Tool not found - check if it's a name duplication bug
+                for available_tool in tools:
+                    # Check if LLM returned duplicated name pattern (name+name)
+                    if tool_name == available_tool.name + available_tool.name:
+                        tool = available_tool
+                        tool_name = available_tool.name
+                        logger.warning(
+                            "Fixed duplicated tool name in LLM response",
+                            extra={
+                                "agent": "Fact Checking Agent",
+                                "original_tool_name": original_tool_name,
+                                "corrected_tool_name": tool_name,
+                                "stage": "tool_name_normalization",
+                            },
+                        )
+                        break
+
             query = tool_args.get('query', tool_args)
 
             logger.info(
@@ -502,8 +527,7 @@ def fact_check_claims(
                 },
             )
 
-            # Execute tool
-            tool = next((t for t in tools if t.name == tool_name), None)
+            # Execute tool (already matched above)
             if tool:
                 try:
                     tool_result = tool.invoke(tool_args)
