@@ -14,7 +14,8 @@
       "Bash(killall:*)",
       "Bash(lsof:*)",
       "Bash(xargs kill -9)",
-      "Bash(timeout 20 python:*)"
+      "Bash(timeout 20 python:*)",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []

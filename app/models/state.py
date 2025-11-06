@@ -17,6 +17,7 @@ class AgentState(TypedDict, total=False):
     # Input
     transcript: str
     metadata: dict | None
+    session_id: str  # Session ID for tracking and logging
 
     # Supervisor workflow output
     supervisor_output: dict  # Contains: summary, notes, fact_check, metadata

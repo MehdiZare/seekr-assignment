@@ -101,10 +101,19 @@ def setup_json_logging(level: str = "INFO") -> None:
     """
     log_level = getattr(logging, level.upper(), logging.INFO)
 
+    # Reconfigure stdout to be line-buffered for immediate output
+    sys.stdout.reconfigure(line_buffering=True)
+
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(log_level)
-
     console_handler.setFormatter(CloudWatchJsonFormatter())
+
+    # Force immediate flush after each log record
+    original_emit = console_handler.emit
+    def flush_emit(record):
+        original_emit(record)
+        console_handler.flush()
+    console_handler.emit = flush_emit
 
     logging.basicConfig(level=log_level, handlers=[console_handler], force=True)
     logging.captureWarnings(True)
@@ -113,6 +122,9 @@ def setup_json_logging(level: str = "INFO") -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
+    # Force immediate flush after setup
+    sys.stdout.flush()
 
 
 def generate_session_id() -> str:

@@ -5,7 +5,6 @@ Each tool wraps a specialist agent function and handles parameter conversion.
 """
 
 import json
-import logging
 from typing import Any
 
 from langchain_core.tools import tool
@@ -16,8 +15,9 @@ from app.agents.specialist_agents import (
     fact_check_claims,
 )
 from app.models.outputs import FactualStatement
+from app.utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @tool

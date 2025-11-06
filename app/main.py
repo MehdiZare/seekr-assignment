@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -45,16 +46,14 @@ logger.info("JSON logging initialized successfully")
 from app.agents.graph import stream_analysis
 from app.models.transcript import TranscriptInput
 
-app = FastAPI(
-    title="Podcast Agent",
-    description="AI-powered podcast analysis with multi-agent workflow",
-    version="0.1.0",
-)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan (startup and shutdown)."""
+    # Re-apply logging configuration in case the host server overrides it (e.g., uvicorn reload)
+    setup_json_logging(level="INFO")
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize application on startup."""
+    # Startup: Initialize application
     logger.info("Application startup initiated")
 
     # Note: config is already loaded at module level, and setup_langsmith() was already called
@@ -80,6 +79,19 @@ async def startup_event():
         logger.info("LangSmith tracing disabled (no API key configured)")
 
     logger.info("Application startup complete - ready to accept requests")
+
+    yield  # Application runs here
+
+    # Shutdown: Clean up resources (if needed)
+    logger.info("Application shutdown")
+
+
+app = FastAPI(
+    title="Podcast Agent",
+    description="AI-powered podcast analysis with multi-agent workflow",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 
 
 @app.exception_handler(RequestValidationError)
@@ -208,16 +220,11 @@ async def generate_sse_events(
             "fact_check_claims_tool": "Fact Checking Agent",
         }
 
-        # Add session_id to metadata for tracking throughout workflow
-        workflow_metadata = metadata or {}
-        if session_id:
-            workflow_metadata["session_id"] = session_id
-
         # Stream the workflow (receives fine-grained events from astream_events)
         print("[DEBUG] generate_sse_events: About to call stream_analysis()")
         sys.stdout.flush()
 
-        async for event in stream_analysis(transcript, workflow_metadata):
+        async for event in stream_analysis(transcript, metadata, session_id):
             event_type = event.get("event")
             event_name = event.get("name", "")
             print(f"[DEBUG] generate_sse_events: Received event - type={event_type}, name={event_name}")

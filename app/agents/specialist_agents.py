@@ -14,7 +14,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from langsmith import traceable
 
-from app.agents.nodes import _create_llm_with_fallback, _invoke_llm_with_failover, _invoke_llm_with_validation_retry
+from app.agents.nodes import _create_llm_with_fallback, _invoke_llm_with_failover
 from app.agents.tools import create_search_tools, validate_and_filter_search_results
 from app.config import get_config
 from app.models.outputs import (
@@ -185,12 +185,11 @@ Guidelines:
 # ============================================================================
 
 @traceable(name="summarizer_agent")
-def summarize_podcast(transcript: str, state_callback: callable = None) -> dict[str, Any]:
+def summarize_podcast(transcript: str) -> dict[str, Any]:
     """Summarizing Agent: Create a 200-300 word summary of the podcast episode.
 
     Args:
         transcript: The full podcast transcript text
-        state_callback: Optional callback for progress updates
 
     Returns:
         Dictionary with:
@@ -209,13 +208,6 @@ def summarize_podcast(transcript: str, state_callback: callable = None) -> dict[
         },
     )
 
-    if state_callback:
-        state_callback({
-            "agent": "Summarizing Agent",
-            "status": "running",
-            "message": "Analyzing podcast transcript to create summary..."
-        })
-
     # Get max retries from config
     config = get_config()
     max_retries = config.app_settings.get("max_retries", 3)
@@ -232,13 +224,6 @@ def summarize_podcast(transcript: str, state_callback: callable = None) -> dict[
             "max_retries": max_retries,
         },
     )
-
-    if state_callback:
-        state_callback({
-            "agent": "Summarizing Agent",
-            "status": "running",
-            "message": "Generating summary, core theme, and key discussions..."
-        })
 
     # Invoke LLM with failover (Primary: Llama Maverick, Fallback: Claude Haiku)
     summary_output = _invoke_llm_with_failover(
@@ -263,14 +248,6 @@ def summarize_podcast(transcript: str, state_callback: callable = None) -> dict[
         },
     )
 
-    if state_callback:
-        state_callback({
-            "agent": "Summarizing Agent",
-            "status": "complete",
-            "message": f"Summary created: {summary_output.core_theme}",
-            "output": summary_output.model_dump()
-        })
-
     return {
         "output": summary_output,
         "reasoning": summary_output.reasoning,
@@ -279,12 +256,11 @@ def summarize_podcast(transcript: str, state_callback: callable = None) -> dict[
 
 
 @traceable(name="note_extractor_agent")
-def extract_notes(transcript: str, state_callback: callable = None) -> dict[str, Any]:
+def extract_notes(transcript: str) -> dict[str, Any]:
     """Note Extraction Agent: Extract takeaways, quotes, topics, and factual statements.
 
     Args:
         transcript: The full podcast transcript text
-        state_callback: Optional callback for progress updates
 
     Returns:
         Dictionary with:
@@ -303,13 +279,6 @@ def extract_notes(transcript: str, state_callback: callable = None) -> dict[str,
         },
     )
 
-    if state_callback:
-        state_callback({
-            "agent": "Note Extraction Agent",
-            "status": "running",
-            "message": "Extracting key information from transcript..."
-        })
-
     # Get max retries from config
     config = get_config()
     max_retries = config.app_settings.get("max_retries", 3)
@@ -326,13 +295,6 @@ def extract_notes(transcript: str, state_callback: callable = None) -> dict[str,
             "max_retries": max_retries,
         },
     )
-
-    if state_callback:
-        state_callback({
-            "agent": "Note Extraction Agent",
-            "status": "running",
-            "message": "Identifying takeaways, quotes, topics, and factual statements..."
-        })
 
     # Invoke LLM with failover (Primary: Llama Maverick, Fallback: Claude Haiku)
     notes_output = _invoke_llm_with_failover(
@@ -358,14 +320,6 @@ def extract_notes(transcript: str, state_callback: callable = None) -> dict[str,
         },
     )
 
-    if state_callback:
-        state_callback({
-            "agent": "Note Extraction Agent",
-            "status": "complete",
-            "message": f"Extracted {len(notes_output.factual_statements)} factual statements, {len(notes_output.notable_quotes)} quotes, {len(notes_output.topics)} topics",
-            "output": notes_output.model_dump()
-        })
-
     return {
         "output": notes_output,
         "reasoning": notes_output.reasoning,
@@ -377,14 +331,12 @@ def extract_notes(transcript: str, state_callback: callable = None) -> dict[str,
 def fact_check_claims(
     factual_statements: list[FactualStatement],
     context: str,
-    state_callback: callable = None
 ) -> dict[str, Any]:
     """Fact Checking Agent: Verify factual claims using search tools.
 
     Args:
         factual_statements: List of FactualStatement objects to verify
         context: Context/summary for better search queries
-        state_callback: Optional callback for progress updates
 
     Returns:
         Dictionary with:
@@ -403,13 +355,6 @@ def fact_check_claims(
             "num_claims": len(factual_statements),
         },
     )
-
-    if state_callback:
-        state_callback({
-            "agent": "Fact Checking Agent",
-            "status": "running",
-            "message": f"Starting verification of {len(factual_statements)} factual statements..."
-        })
 
     # Create LLM instance with tools and failover (Primary: Llama Maverick, Fallback: Claude Haiku)
     primary_llm, fallback_llm = _create_llm_with_fallback("model_d")
@@ -561,18 +506,6 @@ def fact_check_claims(
                 },
             )
 
-            if state_callback:
-                state_callback({
-                    "agent": "Fact Checking Agent",
-                    "status": "running",
-                    "message": f"Searching: {tool_args.get('query', str(tool_args)[:100])}...",
-                    "tool_call": {
-                        "tool": tool_name,
-                        "query": tool_args.get('query', str(tool_args)),
-                        "iteration": iteration + 1
-                    }
-                })
-
             # Execute tool
             tool = next((t for t in tools if t.name == tool_name), None)
             if tool:
@@ -602,18 +535,6 @@ def fact_check_claims(
                         "query": tool_args.get('query', str(tool_args)),
                         "results_count": results_count
                     })
-
-                    if state_callback:
-                        state_callback({
-                            "agent": "Fact Checking Agent",
-                            "status": "running",
-                            "message": f"Found {results_count if results_count else 'N/A'} sources",
-                            "tool_result": {
-                                "tool": tool_name,
-                                "query": tool_args.get('query', str(tool_args)),
-                                "results_count": results_count
-                            }
-                        })
 
                     # Add tool result to messages
                     messages.append(
@@ -666,13 +587,6 @@ def fact_check_claims(
             "max_retries": max_retries,
         },
     )
-
-    if state_callback:
-        state_callback({
-            "agent": "Fact Checking Agent",
-            "status": "running",
-            "message": "Processing verification results..."
-        })
 
     # The last message should be the LLM's final response (after all tool calls)
     # If the last message has content, it's the final JSON response
@@ -731,18 +645,6 @@ def fact_check_claims(
             "total_tool_calls": len(tool_call_log),
         },
     )
-
-    if state_callback:
-        state_callback({
-            "agent": "Fact Checking Agent",
-            "status": "complete",
-            "message": f"Fact-check complete: {status_counts}",
-            "output": fact_check_output.model_dump(),
-            "tool_calls_summary": {
-                "total_searches": len(tool_call_log),
-                "tools_used": list(set(tc["tool"] for tc in tool_call_log))
-            }
-        })
 
     return {
         "output": fact_check_output,

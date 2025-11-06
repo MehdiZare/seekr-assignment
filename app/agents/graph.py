@@ -45,8 +45,6 @@ def create_workflow() -> StateGraph:
 
     # Compile and return
     logger.info("About to compile workflow graph")
-    print("[DEBUG] graph.py: About to compile workflow")
-    sys.stdout.flush()
 
     try:
         compiled_workflow = workflow.compile()
@@ -57,8 +55,6 @@ def create_workflow() -> StateGraph:
                 "nodes": ["supervisor"],
             },
         )
-        print("[DEBUG] graph.py: Workflow compiled successfully")
-        sys.stdout.flush()
         return compiled_workflow
     except Exception as e:
         logger.error(
@@ -68,60 +64,13 @@ def create_workflow() -> StateGraph:
                 "error_type": type(e).__name__,
             },
         )
-        print(f"[ERROR] graph.py: Workflow compilation failed: {e}")
-        sys.stdout.flush()
         raise
-
-
-async def run_analysis(
-    transcript: str,
-    metadata: dict | None = None,
-) -> AgentState:
-    """Run the complete podcast analysis workflow.
-
-    Args:
-        transcript: The podcast transcript text
-        metadata: Optional metadata about the podcast
-
-    Returns:
-        Final agent state with all results from specialist agents
-    """
-    logger.info(
-        "Starting analysis workflow",
-        extra={
-            "stage": "workflow_start",
-            "transcript_length": len(transcript),
-            "has_metadata": metadata is not None,
-        },
-    )
-
-    # Initialize state
-    initial_state: AgentState = {
-        "transcript": transcript,
-        "metadata": metadata,
-        "current_stage": "initialized",
-        "messages": [],
-    }
-
-    # Create and run workflow
-    workflow = create_workflow()
-    final_state = await workflow.ainvoke(initial_state)
-
-    logger.info(
-        "Analysis workflow completed",
-        extra={
-            "stage": "workflow_complete",
-            "final_stage": final_state.get("current_stage"),
-            "message_count": len(final_state.get("messages", [])),
-        },
-    )
-
-    return final_state
 
 
 async def stream_analysis(
     transcript: str,
     metadata: dict | None = None,
+    session_id: str | None = None,
 ):
     """Stream the podcast analysis workflow with real-time updates.
 
@@ -131,13 +80,15 @@ async def stream_analysis(
     Args:
         transcript: The podcast transcript text
         metadata: Optional metadata about the podcast
+        session_id: Session ID for tracking and logging
 
     Yields:
         Events from the workflow including tool calls, completions, and final state
     """
-    # IMMEDIATE entry logging - this should appear FIRST
-    print(f"[DEBUG] stream_analysis: ENTERED - transcript_length={len(transcript)}")
-    sys.stdout.flush()
+    # Set session context early so all logs include session_id
+    if session_id:
+        from app.utils.logger import set_session_context
+        set_session_context(session_id)
 
     logger.info(
         "Starting streaming analysis workflow",
@@ -147,38 +98,26 @@ async def stream_analysis(
             "has_metadata": metadata is not None,
         },
     )
-    print("[DEBUG] stream_analysis: After logger.info")
-    sys.stdout.flush()
 
-    # Initialize state
+    # Initialize state with session_id
     initial_state: AgentState = {
         "transcript": transcript,
         "metadata": metadata,
+        "session_id": session_id or "",
         "current_stage": "initialized",
         "messages": [],
     }
 
-    print("[DEBUG] stream_analysis: Calling create_workflow()")
-    sys.stdout.flush()
-
     workflow = create_workflow()
-
-    print("[DEBUG] stream_analysis: Workflow created, starting astream_events()")
-    sys.stdout.flush()
 
     # Stream fine-grained events (tool calls, LLM calls, etc.)
     # version="v2" is the current stable event streaming format
     event_count = 0
 
     try:
-        print("[DEBUG] stream_analysis: Entering astream_events loop")
-        sys.stdout.flush()
-
         async for event in workflow.astream_events(initial_state, version="v2"):
             event_type = event.get("event")
             event_name = event.get("name", "")
-            print(f"[DEBUG] stream_analysis: Event received - type={event_type}, name={event_name}")
-            sys.stdout.flush()
 
             # Filter and yield events we want to send to the UI:
             # - on_tool_start: When specialist agents begin execution
@@ -187,14 +126,10 @@ async def stream_analysis(
 
             if event_type in ["on_tool_start", "on_tool_end"]:
                 event_count += 1
-                print(f"[DEBUG] stream_analysis: Yielding {event_type} event (count={event_count})")
-                sys.stdout.flush()
                 yield event
             elif event_type == "on_chain_end" and event.get("name") == "LangGraph":
                 # Workflow complete - yield the final state
                 event_count += 1
-                print(f"[DEBUG] stream_analysis: Workflow complete, yielding final state (count={event_count})")
-                sys.stdout.flush()
                 logger.info(
                     "Streaming analysis workflow completed",
                     extra={
@@ -204,13 +139,8 @@ async def stream_analysis(
                 )
                 yield event
 
-        print(f"[DEBUG] stream_analysis: Exited astream_events loop - total events: {event_count}")
-        sys.stdout.flush()
-
     except Exception as e:
         error_msg = f"CRITICAL ERROR in stream_analysis: {type(e).__name__}: {str(e)}"
-        print(f"[ERROR] {error_msg}")
-        sys.stdout.flush()
         logger.error(
             error_msg,
             extra={

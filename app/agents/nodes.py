@@ -1,7 +1,6 @@
 """Node implementations for the LangGraph workflow."""
 
 import json
-import logging
 import re
 from typing import Any
 
@@ -11,49 +10,10 @@ from langchain_openai import ChatOpenAI
 from langsmith import traceable
 from pydantic import ValidationError
 
+from app.config import get_config
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-from app.config import get_config
-
-
-@traceable(name="create_llm")
-def _create_llm(model_key: str) -> ChatAnthropic | ChatOpenAI:
-    """Create an LLM instance based on model configuration."""
-    config = get_config()
-    model_config = config.get_model_config(model_key)
-
-    provider = model_config["provider"]
-    model_name = model_config["name"]
-    temperature = model_config.get("temperature", 0.3)
-    max_tokens = model_config.get("max_tokens", 2000)
-
-    if provider == "anthropic":
-        return ChatAnthropic(
-            api_key=config.get_api_key("anthropic"),
-            model=model_name,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-    elif provider == "llama":
-        # Use OpenAI SDK with Llama API endpoint
-        return ChatOpenAI(
-            api_key=config.get_api_key("llama"),
-            base_url="https://api.llama.com/compat/v1/",
-            model=model_name,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-    elif provider == "openai":
-        return ChatOpenAI(
-            api_key=config.get_api_key("openai"),
-            model=model_name,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-    else:
-        raise ValueError(f"Unknown provider: {provider}")
 
 
 @traceable(name="create_llm_with_fallback")
@@ -88,9 +48,8 @@ def _create_llm_with_fallback(model_key: str) -> tuple[ChatAnthropic | ChatOpenA
     if primary_provider == "anthropic":
         primary_llm = ChatAnthropic(
             api_key=config.get_api_key("anthropic"),
-            model=primary_model_name,
+            model_name=primary_model_name,
             temperature=temperature,
-            max_tokens=max_tokens,
         )
     elif primary_provider == "llama":
         primary_llm = ChatOpenAI(
@@ -132,9 +91,8 @@ def _create_llm_with_fallback(model_key: str) -> tuple[ChatAnthropic | ChatOpenA
         if fallback_provider == "anthropic":
             fallback_llm = ChatAnthropic(
                 api_key=config.get_api_key("anthropic"),
-                model=fallback_model_name,
+                model_name=fallback_model_name,
                 temperature=fallback_temperature,
-                max_tokens=fallback_max_tokens,
             )
         elif fallback_provider == "llama":
             fallback_llm = ChatOpenAI(
@@ -310,10 +268,10 @@ def _auto_fix_validation(data: dict, error: ValidationError, model_class: type) 
 
 @traceable(name="invoke_llm_with_validation_retry")
 def _invoke_llm_with_validation_retry(
-    llm: ChatAnthropic | ChatOpenAI,
-    messages: list,
-    model_class: type,
-    max_retries: int = 3,
+        llm: ChatAnthropic | ChatOpenAI,
+        messages: list,
+        model_class: type,
+        max_retries: int = 3,
 ) -> Any:
     """
     Invoke LLM with automatic retry on Pydantic validation errors.
@@ -398,10 +356,10 @@ IMPORTANT: Make sure your response is valid JSON and follows ALL the schema cons
 
 @traceable(name="invoke_llm_with_failover")
 def _invoke_llm_with_failover(
-    model_key: str,
-    messages: list,
-    model_class: type,
-    max_retries: int = 3,
+        model_key: str,
+        messages: list,
+        model_class: type,
+        max_retries: int = 3,
 ) -> Any:
     """
     Invoke LLM with automatic failover from primary to fallback model on ANY error.

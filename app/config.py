@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     )
     langsmith_api_key: str | None = Field(None, alias="LANGSMITH_API_KEY")
     langsmith_project: str = Field(
-        "pr-healthy-sustainment-69", alias="LANGSMITH_PROJECT"
+        "pr-weary-stencil-41", alias="LANGSMITH_PROJECT"
     )
 
     model_config = SettingsConfigDict(
@@ -108,6 +108,12 @@ class Config:
             os.environ["LANGCHAIN_ENDPOINT"] = self.settings.langsmith_endpoint
             os.environ["LANGCHAIN_API_KEY"] = self.settings.langsmith_api_key
             os.environ["LANGCHAIN_PROJECT"] = self.settings.langsmith_project
+
+            # Verify LangSmith is configured
+            print(f"[CONFIG] LangSmith tracing enabled - Project: {self.settings.langsmith_project}")
+        else:
+            reason = "disabled" if not self.settings.langsmith_tracing else "missing API key"
+            print(f"[CONFIG] LangSmith tracing not active - Reason: {reason}")
 
 
 # Global config instance

@@ -72,10 +72,6 @@ def supervisor_node(state: AgentState) -> dict:
         - messages: Progress updates for UI
         - current_stage: Current processing stage
     """
-    # IMMEDIATE entry logging
-    print(f"[DEBUG] supervisor_node: ENTERED - transcript_length={len(state.get('transcript', ''))}")
-    sys.stdout.flush()
-
     logger.info(
         "Supervisor node started - Beginning workflow coordination",
         extra={

@@ -1,6 +1,5 @@
 """Search tool implementations for fact-checking."""
 
-import logging
 from typing import Any
 
 from langchain_tavily import TavilySearch
@@ -8,8 +7,9 @@ from langchain_core.tools import Tool
 from langchain_tavily._utilities import TavilySearchAPIWrapper
 
 from app.config import get_config
+from app.utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def create_search_tools() -> list[Tool]:
@@ -51,24 +51,6 @@ def create_search_tools() -> list[Tool]:
         )
 
     return tools
-
-
-def get_tool_descriptions() -> str:
-    """Get descriptions of available search tools for agent prompts.
-
-    Returns:
-        String describing available tools.
-    """
-    config = get_config()
-    descriptions = []
-
-    if config.settings.tavily_api_key:
-        descriptions.append("- Tavily Search: Comprehensive search with advanced filtering")
-
-    if config.settings.brave_api_key:
-        descriptions.append("- Brave Search: Privacy-focused search engine")
-
-    return "\n".join(descriptions) if descriptions else "No search tools available"
 
 
 def validate_and_filter_search_results(tool_result: Any, timeout: int = 3) -> Any:
