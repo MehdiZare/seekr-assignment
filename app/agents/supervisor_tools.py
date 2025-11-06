@@ -156,7 +156,7 @@ def extract_notes_tool(transcript: str) -> str:
 
 
 @tool
-def fact_check_claims_tool(factual_statements_json: str, context: str) -> str:
+async def fact_check_claims_tool(factual_statements_json: str, context: str) -> str:
     """Verify factual claims using search tools.
 
     This tool takes factual statements and verifies them using web search:
@@ -164,6 +164,8 @@ def fact_check_claims_tool(factual_statements_json: str, context: str) -> str:
     - Evaluates source credibility
     - Classifies as: fact-checked, unverified, or declined
     - Provides credible source links
+
+    Note: This is an async tool that performs non-blocking URL validation.
 
     Args:
         factual_statements_json: JSON string containing list of factual statements.
@@ -237,7 +239,7 @@ def fact_check_claims_tool(factual_statements_json: str, context: str) -> str:
 
     # Call the specialist agent
     try:
-        result = fact_check_claims(factual_statements, context)
+        result = await fact_check_claims(factual_statements, context)
 
         # Convert output to JSON string
         output_dict = result["output"].model_dump()

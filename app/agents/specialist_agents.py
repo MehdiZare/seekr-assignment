@@ -327,7 +327,7 @@ def extract_notes(transcript: str) -> dict[str, Any]:
 
 
 @traceable(name="fact_checker_agent")
-def fact_check_claims(
+async def fact_check_claims(
     factual_statements: list[FactualStatement],
     context: str,
 ) -> dict[str, Any]:
@@ -365,6 +365,32 @@ def fact_check_claims(
 
     # Create search tools
     tools = create_search_tools()
+
+    # Log and validate tool names before binding
+    tool_names = [tool.name for tool in tools]
+    logger.info(
+        "Search tools created for fact-checking",
+        extra={
+            "agent": "Fact Checking Agent",
+            "tool_names": tool_names,
+            "tool_count": len(tools),
+            "stage": "tools_initialization",
+        },
+    )
+
+    # Check for duplicate tool names
+    if len(tool_names) != len(set(tool_names)):
+        duplicates = [name for name in tool_names if tool_names.count(name) > 1]
+        logger.error(
+            "Duplicate tool names detected",
+            extra={
+                "agent": "Fact Checking Agent",
+                "duplicates": list(set(duplicates)),
+                "all_tools": tool_names,
+                "stage": "tools_validation_error",
+            },
+        )
+
     tool_descriptions = "\n".join(
         f"- {tool.name}: {tool.description}" for tool in tools
     )
@@ -535,7 +561,7 @@ def fact_check_claims(
                     # Validate and filter search results
                     results_count = 0
                     if tool_name in ["tavily_search", "brave_search", "serper_search"]:
-                        tool_result = validate_and_filter_search_results(tool_result)
+                        tool_result = await validate_and_filter_search_results(tool_result)
                         results_count = len(tool_result) if isinstance(tool_result, list) else 0
 
                         logger.info(

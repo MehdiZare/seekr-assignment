@@ -5,7 +5,7 @@ A sophisticated multi-agent system built with LangGraph that analyzes podcast tr
 ## Features
 
 - **Supervisor-Coordinated Workflow**: Editor-in-Chief agent orchestrates specialist agents as tools
-- **Intelligent Failover**: Llama Maverick primary models with automatic failover to Claude Haiku
+- **Intelligent Failover**: Llama Maverick primary models with automatic failover to OpenAI GPT-5 variants
 - **Real-Time Specialist Agents**:
   - Summarizing Agent: Extracts core themes and comprehensive summaries
   - Note Extraction Agent: Pulls out takeaways, quotes, topics, and factual statements
@@ -68,14 +68,14 @@ flowchart TD
 
 ### Models Used (with Failover)
 
-All agents use **Llama Maverick** as primary with automatic failover to **Claude Haiku 4.5**:
+All agents use **Llama Maverick** as primary with automatic failover to **OpenAI GPT-5** variants:
 
-- **Supervisor Agent**: Llama-4-Maverick-17B → Claude Haiku 4.5 (fallback)
-- **Summarizing Agent**: Llama-4-Maverick-17B → Claude Haiku 4.5 (fallback)
-- **Note Extraction Agent**: Llama-4-Maverick-17B → Claude Haiku 4.5 (fallback)
-- **Fact Checking Agent**: Llama-4-Maverick-17B → Claude Haiku 4.5 (fallback)
+- **Supervisor Agent**: Llama-4-Maverick-17B → OpenAI GPT-5 Nano (fallback)
+- **Summarizing Agent**: Llama-4-Maverick-17B → OpenAI GPT-5 Nano (fallback)
+- **Note Extraction Agent**: Llama-4-Maverick-17B → OpenAI GPT-5 Nano (fallback)
+- **Fact Checking Agent**: Llama-4-Maverick-17B → OpenAI GPT-5 Mini (fallback)
 
-**Failover Triggers**: API errors, rate limits, network errors, or any model failure automatically triggers fallback to Claude Haiku with full CloudWatch logging.
+**Failover Triggers**: API errors, rate limits, network errors, or any model failure automatically triggers fallback to OpenAI GPT-5 with full CloudWatch logging.
 
 ### Search Tools
 
@@ -154,7 +154,7 @@ This project is built with industry-standard tools and frameworks:
 ### Required API Keys
 
 #### 1. Anthropic API Key
-**Used for**: Claude Haiku 4.5 (failover model for all agents)
+**Used for**: Claude models (optional - currently using OpenAI for failover)
 
 **Get your key**:
 1. Visit https://console.anthropic.com/
@@ -180,7 +180,21 @@ ANTHROPIC_API_KEY=sk-ant-api03-...
 LLAMA_API_KEY=LL-...
 ```
 
-#### 3. Search Tool API Key (Choose at least ONE)
+#### 3. OpenAI API Key
+**Used for**: OpenAI GPT-5 variants (failover model for all agents)
+
+**Get your key**:
+1. Visit https://platform.openai.com/
+2. Sign up or log in
+3. Go to "API Keys" section
+4. Create a new key
+5. Copy the key (starts with `sk-`)
+
+```bash
+OPENAI_API_KEY=sk-...
+```
+
+#### 4. Search Tool API Key (Choose at least ONE)
 
 **Option A: Tavily (Recommended)**
 - Visit https://tavily.com/
@@ -230,8 +244,9 @@ LANGSMITH_PROJECT=your-project-name
 
 ```bash
 # LLM API Keys (Required)
-ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
-LLAMA_API_KEY=LL-your-key-here
+ANTHROPIC_API_KEY=sk-ant-api03-your-key-here  # Optional - for Claude models
+LLAMA_API_KEY=LL-your-key-here                # Required - primary model
+OPENAI_API_KEY=sk-your-key-here               # Required - failover model
 
 # Search Tool API Keys (At least one required)
 TAVILY_API_KEY=tvly-your-key-here
@@ -476,27 +491,27 @@ curl http://localhost:8000/api/samples/{sample_id}
 
 ```yaml
 models:
-  # Supervisor model - Primary: Llama Maverick, Fallback: Claude Haiku
+  # Supervisor model - Primary: Llama Maverick, Fallback: OpenAI GPT-5 Nano
   model_c:
     provider: "llama"
     name: "Llama-4-Maverick-17B-128E-Instruct-FP8"
     temperature: 0.2
     max_tokens: 4000
     fallback:
-      provider: "anthropic"
-      name: "claude-haiku-4-5"
+      provider: "openai"
+      name: "gpt-5-nano-2025-08-07"
       temperature: 0.2
       max_tokens: 4000
 
-  # Fact-checking model - Primary: Llama Maverick, Fallback: Claude Haiku
+  # Fact-checking model - Primary: Llama Maverick, Fallback: OpenAI GPT-5 Mini
   model_d:
     provider: "llama"
     name: "Llama-4-Maverick-17B-128E-Instruct-FP8"
     temperature: 0.1
     max_tokens: 8000
     fallback:
-      provider: "anthropic"
-      name: "claude-haiku-4-5"
+      provider: "openai"
+      name: "gpt-5-mini-2025-08-07"
       temperature: 0.1
       max_tokens: 8000
 
@@ -872,9 +887,10 @@ Render.com provides easy Docker-based deployment with automatic HTTPS.
    - Navigate to "Environment" tab
    - Add required API keys:
      ```
-     ANTHROPIC_API_KEY
-     LLAMA_API_KEY
+     LLAMA_API_KEY (required - primary model)
+     OPENAI_API_KEY (required - failover model)
      TAVILY_API_KEY (or SERPER_API_KEY or BRAVE_API_KEY)
+     ANTHROPIC_API_KEY (optional - for Claude models)
      ```
    - Optional: Add LangSmith keys for observability
 
