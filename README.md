@@ -24,24 +24,20 @@ A sophisticated multi-agent system built with LangGraph that analyzes podcast tr
 
 ```mermaid
 flowchart TD
-    Start([START: Podcast Transcript]) --> Supervisor{Supervisor Agent<br/>Editor-in-Chief}
+    Start([START: Podcast Transcript]) --> Supervisor{Supervisor Agent<br/>Editor-in-Chief<br/>Analyzes & Decides}
 
-    Supervisor -->|Tool Call 1| Summarizer[Summarizing Agent<br/>📝 Create Summary]
-    Supervisor -->|Tool Call 2| NoteExtractor[Note Extraction Agent<br/>🔍 Extract Key Info]
-    Supervisor -->|Tool Call 3| FactChecker[Fact Checking Agent<br/>✓ Verify Claims]
+    Supervisor -->|Calls as needed| Summarizer[Summarizing Agent<br/>📝 Create Summary]
+    Supervisor -->|Calls as needed| NoteExtractor[Note Extraction Agent<br/>🔍 Extract Key Info]
+    Supervisor -->|Calls as needed| FactChecker[Fact Checking Agent<br/>✓ Verify Claims]
 
-    Summarizer -->|Returns| SummaryData[Summary Output<br/>• Core Theme<br/>• Key Discussions<br/>• Outcomes]
-    NoteExtractor -->|Returns| NotesData[Notes Output<br/>• Top 5 Takeaways<br/>• Notable Quotes<br/>• Topics<br/>• Factual Statements]
-    FactChecker -->|Returns| FactCheckData[Fact Check Output<br/>• Verified Claims<br/>• Sources<br/>• Reliability Score]
+    Summarizer -->|Returns Results| Supervisor
+    NoteExtractor -->|Returns Results| Supervisor
+    FactChecker -->|Returns Results| Supervisor
 
     FactChecker -.->|Uses| SearchTools[Search Tools<br/>Tavily / Serper / Brave]
     SearchTools -.->|Web Results| FactChecker
 
-    SummaryData --> Consolidate[Supervisor Consolidates Results]
-    NotesData --> Consolidate
-    FactCheckData --> Consolidate
-
-    Consolidate --> End([END: Complete Analysis<br/>JSON + Markdown])
+    Supervisor -->|All agents complete| End([END: Complete Analysis<br/>JSON + Markdown])
 
     style Start fill:#e1f5ff
     style End fill:#c8e6c9
@@ -50,7 +46,6 @@ flowchart TD
     style NoteExtractor fill:#f8bbd0
     style FactChecker fill:#f8bbd0
     style SearchTools fill:#b2dfdb
-    style Consolidate fill:#fff9c4
 ```
 
 ### How It Works
