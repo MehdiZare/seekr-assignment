@@ -8,6 +8,7 @@ import json
 from typing import Any
 
 from langchain_core.tools import tool
+from pydantic import ValidationError
 
 from app.agents.specialist_agents import (
     summarize_podcast,
@@ -43,14 +44,48 @@ def summarize_podcast_tool(transcript: str) -> str:
     """
     logger.info("Supervisor calling Summarizing Agent tool")
 
-    # Call the specialist agent
-    result = summarize_podcast(transcript)
+    try:
+        # Call the specialist agent
+        result = summarize_podcast(transcript)
 
-    # Convert output to JSON string
-    output_dict = result["output"].model_dump()
-    output_dict["reasoning"] = result["reasoning"]
+        # Convert output to JSON string
+        output_dict = result["output"].model_dump()
+        output_dict["reasoning"] = result["reasoning"]
 
-    return json.dumps(output_dict, indent=2)
+        return json.dumps(output_dict, indent=2)
+
+    except ValidationError as e:
+        # Format validation errors for the LLM
+        error_messages = []
+        for err in e.errors():
+            field = ".".join(str(x) for x in err["loc"])
+            error_messages.append(f"{field}: {err['msg']}")
+
+        logger.error(f"Validation error in summarize_podcast_tool: {error_messages}")
+
+        return json.dumps({
+            "error": "ValidationError - The summary output did not meet requirements",
+            "error_type": "ValidationError",
+            "error_details": error_messages,
+            "reasoning": "The summary generation failed validation. Please review the requirements and try again.",
+            "summary": None,
+            "core_theme": None,
+            "key_discussions": [],
+            "outcomes_and_opinions": []
+        }, indent=2)
+
+    except Exception as e:
+        logger.error(f"Unexpected error in summarize_podcast_tool: {type(e).__name__}: {e}")
+
+        return json.dumps({
+            "error": f"Unexpected error: {str(e)}",
+            "error_type": type(e).__name__,
+            "reasoning": "An unexpected error occurred during summary generation.",
+            "summary": None,
+            "core_theme": None,
+            "key_discussions": [],
+            "outcomes_and_opinions": []
+        }, indent=2)
 
 
 @tool
@@ -76,14 +111,48 @@ def extract_notes_tool(transcript: str) -> str:
     """
     logger.info("Supervisor calling Note Extraction Agent tool")
 
-    # Call the specialist agent
-    result = extract_notes(transcript)
+    try:
+        # Call the specialist agent
+        result = extract_notes(transcript)
 
-    # Convert output to JSON string
-    output_dict = result["output"].model_dump()
-    output_dict["reasoning"] = result["reasoning"]
+        # Convert output to JSON string
+        output_dict = result["output"].model_dump()
+        output_dict["reasoning"] = result["reasoning"]
 
-    return json.dumps(output_dict, indent=2)
+        return json.dumps(output_dict, indent=2)
+
+    except ValidationError as e:
+        # Format validation errors for the LLM
+        error_messages = []
+        for err in e.errors():
+            field = ".".join(str(x) for x in err["loc"])
+            error_messages.append(f"{field}: {err['msg']}")
+
+        logger.error(f"Validation error in extract_notes_tool: {error_messages}")
+
+        return json.dumps({
+            "error": "ValidationError - The notes extraction output did not meet requirements",
+            "error_type": "ValidationError",
+            "error_details": error_messages,
+            "reasoning": "The notes extraction failed validation. Please review the requirements and try again.",
+            "top_takeaways": [],
+            "notable_quotes": [],
+            "topics": [],
+            "factual_statements": []
+        }, indent=2)
+
+    except Exception as e:
+        logger.error(f"Unexpected error in extract_notes_tool: {type(e).__name__}: {e}")
+
+        return json.dumps({
+            "error": f"Unexpected error: {str(e)}",
+            "error_type": type(e).__name__,
+            "reasoning": "An unexpected error occurred during notes extraction.",
+            "top_takeaways": [],
+            "notable_quotes": [],
+            "topics": [],
+            "factual_statements": []
+        }, indent=2)
 
 
 @tool
@@ -167,17 +236,49 @@ def fact_check_claims_tool(factual_statements_json: str, context: str) -> str:
         })
 
     # Call the specialist agent
-    result = fact_check_claims(factual_statements, context)
+    try:
+        result = fact_check_claims(factual_statements, context)
 
-    # Convert output to JSON string
-    output_dict = result["output"].model_dump()
-    output_dict["reasoning"] = result["reasoning"]
-    output_dict["tool_calls_summary"] = {
-        "total_searches": len(result.get("tool_calls", [])),
-        "tools_used": list(set(tc["tool"] for tc in result.get("tool_calls", [])))
-    }
+        # Convert output to JSON string
+        output_dict = result["output"].model_dump()
+        output_dict["reasoning"] = result["reasoning"]
+        output_dict["tool_calls_summary"] = {
+            "total_searches": len(result.get("tool_calls", [])),
+            "tools_used": list(set(tc["tool"] for tc in result.get("tool_calls", [])))
+        }
 
-    return json.dumps(output_dict, indent=2)
+        return json.dumps(output_dict, indent=2)
+
+    except ValidationError as e:
+        # Format validation errors for the LLM
+        error_messages = []
+        for err in e.errors():
+            field = ".".join(str(x) for x in err["loc"])
+            error_messages.append(f"{field}: {err['msg']}")
+
+        logger.error(f"Validation error in fact_check_claims_tool: {error_messages}")
+
+        return json.dumps({
+            "error": "ValidationError - The fact-checking output did not meet requirements",
+            "error_type": "ValidationError",
+            "error_details": error_messages,
+            "reasoning": "The fact-checking process failed validation. Please review the requirements and try again.",
+            "verified_claims": [],
+            "overall_reliability": 0.0,
+            "research_quality": 0.0
+        }, indent=2)
+
+    except Exception as e:
+        logger.error(f"Unexpected error in fact_check_claims_tool: {type(e).__name__}: {e}")
+
+        return json.dumps({
+            "error": f"Unexpected error: {str(e)}",
+            "error_type": type(e).__name__,
+            "reasoning": "An unexpected error occurred during fact-checking.",
+            "verified_claims": [],
+            "overall_reliability": 0.0,
+            "research_quality": 0.0
+        }, indent=2)
 
 
 def create_supervisor_tools() -> list:
