@@ -22,11 +22,54 @@ A sophisticated multi-agent system built with LangGraph that analyzes podcast tr
 
 ### Agent Workflow
 
-```
-START → Supervisor → [Summarizing Agent, Note Extraction Agent, Fact Checking Agent] → END
+```mermaid
+flowchart TD
+    Start([START: Podcast Transcript]) --> Supervisor{Supervisor Agent<br/>Editor-in-Chief}
+
+    Supervisor -->|Tool Call 1| Summarizer[Summarizing Agent<br/>📝 Create Summary]
+    Supervisor -->|Tool Call 2| NoteExtractor[Note Extraction Agent<br/>🔍 Extract Key Info]
+    Supervisor -->|Tool Call 3| FactChecker[Fact Checking Agent<br/>✓ Verify Claims]
+
+    Summarizer -->|Returns| SummaryData[Summary Output<br/>• Core Theme<br/>• Key Discussions<br/>• Outcomes]
+    NoteExtractor -->|Returns| NotesData[Notes Output<br/>• Top 5 Takeaways<br/>• Notable Quotes<br/>• Topics<br/>• Factual Statements]
+    FactChecker -->|Returns| FactCheckData[Fact Check Output<br/>• Verified Claims<br/>• Sources<br/>• Reliability Score]
+
+    FactChecker -.->|Uses| SearchTools[Search Tools<br/>Tavily / Serper / Brave]
+    SearchTools -.->|Web Results| FactChecker
+
+    SummaryData --> Consolidate[Supervisor Consolidates Results]
+    NotesData --> Consolidate
+    FactCheckData --> Consolidate
+
+    Consolidate --> End([END: Complete Analysis<br/>JSON + Markdown])
+
+    style Start fill:#e1f5ff
+    style End fill:#c8e6c9
+    style Supervisor fill:#fff9c4
+    style Summarizer fill:#f8bbd0
+    style NoteExtractor fill:#f8bbd0
+    style FactChecker fill:#f8bbd0
+    style SearchTools fill:#b2dfdb
+    style Consolidate fill:#fff9c4
 ```
 
-The Supervisor agent acts as an Editor-in-Chief, coordinating specialist agents via tool calling. Each specialist agent completes its task independently, and the Supervisor consolidates all results.
+### How It Works
+
+1. **User Input**: Podcast transcript is submitted via web UI or API
+2. **Supervisor Agent** (Editor-in-Chief):
+   - Analyzes the transcript
+   - Orchestrates specialist agents as **tool calls**
+   - Manages data flow between agents
+   - Consolidates all results into final output
+
+3. **Specialist Agents** (Called as Tools):
+   - **Summarizing Agent**: Creates 200-300 word summary with core theme
+   - **Note Extraction Agent**: Extracts takeaways, quotes, topics, and factual statements
+   - **Fact Checking Agent**: Verifies claims using web search tools
+
+4. **Search Integration**: Fact Checking Agent uses Tavily/Serper/Brave for verification
+
+5. **Output**: Comprehensive JSON and Markdown reports with verified information
 
 ### Models Used (with Failover)
 
