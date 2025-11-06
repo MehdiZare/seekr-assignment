@@ -20,33 +20,40 @@ A sophisticated multi-agent system built with LangGraph that analyzes podcast tr
 
 ## Architecture
 
-### Agent Workflow
+### Agent Workflow (Linear LangGraph Flow)
 
 ```mermaid
 flowchart TD
-    Start([START: Podcast Transcript]) --> Supervisor{Supervisor Agent<br/>Editor-in-Chief<br/>Analyzes & Decides}
+    Start([START: Podcast Transcript]) --> SupervisorNode
 
-    Supervisor -->|Calls as needed| Summarizer[Summarizing Agent<br/>Create Summary]
-    Supervisor -->|Calls as needed| NoteExtractor[Note Extraction Agent<br/>Extract Key Info]
-    Supervisor -->|Calls as needed| FactChecker[Fact Checking Agent<br/>Verify Claims]
+    subgraph SupervisorNode["🔄 Supervisor Node - Linear Workflow"]
+        direction TB
+        Supervisor["<b>Supervisor Agent</b><br/>(Editor-in-Chief)<br/><br/>Orchestrates via Tool Calls"]
 
-    Summarizer -->|Returns Results| Supervisor
-    NoteExtractor -->|Returns Results| Supervisor
-    FactChecker -->|Returns Results| Supervisor
+        Supervisor -.->|"① Tool Call"| Summarizer["📝 Summarizing Agent<br/>(Tool)<br/>Create 200-300 word summary"]
+        Supervisor -.->|"② Tool Call"| NoteExtractor["📋 Note Extraction Agent<br/>(Tool)<br/>Extract takeaways, quotes, topics"]
+        Supervisor -.->|"③ Tool Call"| FactChecker["✓ Fact Checking Agent<br/>(Tool)<br/>Verify claims with web search"]
 
-    FactChecker -.->|Uses| SearchTools[Search Tools<br/>Tavily / Serper / Brave]
-    SearchTools -.->|Web Results| FactChecker
+        FactChecker -.->|Uses| SearchTools["🔍 Search Tools<br/>Tavily / Serper / Brave"]
+        SearchTools -.->|Web Results| FactChecker
+    end
 
-    Supervisor -->|All agents complete| End([END: Complete Analysis<br/>JSON + Markdown])
+    SupervisorNode --> End([END: Complete Analysis<br/>JSON + Markdown])
 
-    style Start fill:#e1f5ff
-    style End fill:#c8e6c9
-    style Supervisor fill:#fff9c4
-    style Summarizer fill:#f8bbd0
-    style NoteExtractor fill:#f8bbd0
-    style FactChecker fill:#f8bbd0
-    style SearchTools fill:#b2dfdb
+    style Start fill:#e1f5ff,stroke:#0288d1,stroke-width:3px
+    style End fill:#c8e6c9,stroke:#388e3c,stroke-width:3px
+    style SupervisorNode fill:#fff9c4,stroke:#f57c00,stroke-width:4px
+    style Supervisor fill:#fff9c4,stroke:#f57c00,stroke-width:2px
+    style Summarizer fill:#f8bbd0,stroke:#c2185b,stroke-width:2px
+    style NoteExtractor fill:#f8bbd0,stroke:#c2185b,stroke-width:2px
+    style FactChecker fill:#f8bbd0,stroke:#c2185b,stroke-width:2px
+    style SearchTools fill:#b2dfdb,stroke:#00796b,stroke-width:2px
 ```
+
+**Key Architecture Points:**
+- **Linear LangGraph Flow**: `START → Supervisor Node → END` (single node)
+- **Internal Tool Orchestration**: Supervisor calls specialist agents as tools sequentially
+- **Real-Time Progress**: SSE events emitted as each tool executes within the supervisor node
 
 ### How It Works
 
