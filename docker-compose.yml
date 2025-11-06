@@ -14,7 +14,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       # LangSmith tracing (optional - from .env file)
-      - LANGSMITH_TRACING=${LANGSMITH_TRACING:-false}
+      - LANGSMITH_TRACING=${LANGSMITH_TRACING:-true}
       - LANGSMITH_ENDPOINT=${LANGSMITH_ENDPOINT:-https://api.smith.langchain.com}
       - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
       - LANGSMITH_PROJECT=${LANGSMITH_PROJECT:-pr-healthy-sustainment-69}

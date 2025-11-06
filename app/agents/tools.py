@@ -5,6 +5,7 @@ from typing import Any
 
 from langchain_tavily import TavilySearch
 from langchain_core.tools import Tool
+from langchain_tavily._utilities import TavilySearchAPIWrapper
 
 from app.config import get_config
 
@@ -23,10 +24,12 @@ def create_search_tools() -> list[Tool]:
     # Tavily Search (preferred for comprehensive results)
     if config.settings.tavily_api_key:
         tavily_config = config.search_tools.get("tavily", {})
+        tavliy_api_wrapper = TavilySearchAPIWrapper(tavily_api_key=config.settings.tavily_api_key)
+
         tavily_tool = TavilySearch(
-            api_key=config.settings.tavily_api_key,
             max_results=tavily_config.get("max_results", 10),
             search_depth=tavily_config.get("search_depth", "advanced"),
+            api_wrapper=tavliy_api_wrapper
         )
         tools.append(tavily_tool)
 

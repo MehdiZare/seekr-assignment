@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     brave_api_key: str | None = Field(None, alias="BRAVE_API_KEY")
 
     # LangSmith Tracing (optional)
-    langsmith_tracing: bool = Field(False, alias="LANGSMITH_TRACING")
+    langsmith_tracing: bool = Field(True, alias="LANGSMITH_TRACING")
     langsmith_endpoint: str = Field(
         "https://api.smith.langchain.com", alias="LANGSMITH_ENDPOINT"
     )

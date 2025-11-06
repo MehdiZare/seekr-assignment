@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Podcast Agent - AI Analysis</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         .stage-indicator {
             transition: all 0.3s ease;
@@ -95,37 +96,55 @@
         <div id="progress-section" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
             <h2 class="text-2xl font-semibold mb-4">Processing Progress</h2>
 
-            <!-- Stage Indicators -->
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                <div id="stage-parallel" class="stage-indicator stage-pending p-3 rounded-lg text-center">
-                    <div class="font-medium text-sm">Parallel Analysis</div>
-                    <div class="text-xs mt-1">Models A & B</div>
-                </div>
-                <div id="stage-supervisor" class="stage-indicator stage-pending p-3 rounded-lg text-center">
-                    <div class="font-medium text-sm">Supervisor</div>
-                    <div class="text-xs mt-1">Model C</div>
-                </div>
-                <div id="stage-fact-check" class="stage-indicator stage-pending p-3 rounded-lg text-center">
-                    <div class="font-medium text-sm">Fact Checking</div>
-                    <div class="text-xs mt-1">Model D</div>
-                </div>
-                <div id="stage-critic" class="stage-indicator stage-pending p-3 rounded-lg text-center">
-                    <div class="font-medium text-sm">Critic Review</div>
-                    <div class="text-xs mt-1">Quality Check</div>
-                </div>
-                <div id="stage-complete" class="stage-indicator stage-pending p-3 rounded-lg text-center">
-                    <div class="font-medium text-sm">Complete</div>
-                    <div class="text-xs mt-1">Final Results</div>
+            <!-- Current Agent Indicator -->
+            <div class="mb-6">
+                <div class="text-sm text-gray-600 mb-2">Current Agent:</div>
+                <div id="current-agent-indicator" class="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 rounded-lg shadow-lg">
+                    <div class="flex items-center">
+                        <div class="spinner mr-3 border-white border-t-transparent"></div>
+                        <div>
+                            <div id="current-agent-name" class="font-bold text-lg">Supervisor (Editor-in-Chief)</div>
+                            <div id="current-agent-action" class="text-sm opacity-90">Coordinating specialist agents...</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Messages -->
-            <div class="bg-gray-50 rounded-lg p-4">
-                <h3 class="font-medium mb-2 flex items-center">
-                    <div class="spinner mr-2"></div>
-                    Processing...
+            <!-- Agent Status Grid -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                <div id="agent-supervisor" class="agent-status p-3 rounded-lg border-2 border-blue-300 bg-blue-50">
+                    <div class="font-medium text-sm text-blue-900">Supervisor</div>
+                    <div class="text-xs text-blue-700 mt-1">Coordinating</div>
+                </div>
+                <div id="agent-summarizer" class="agent-status stage-pending p-3 rounded-lg border-2 border-gray-200">
+                    <div class="font-medium text-sm">Summarizer</div>
+                    <div class="text-xs text-gray-600 mt-1">Pending</div>
+                </div>
+                <div id="agent-notes" class="agent-status stage-pending p-3 rounded-lg border-2 border-gray-200">
+                    <div class="font-medium text-sm">Note Extractor</div>
+                    <div class="text-xs text-gray-600 mt-1">Pending</div>
+                </div>
+                <div id="agent-factcheck" class="agent-status stage-pending p-3 rounded-lg border-2 border-gray-200">
+                    <div class="font-medium text-sm">Fact Checker</div>
+                    <div class="text-xs text-gray-600 mt-1">Pending</div>
+                </div>
+            </div>
+
+            <!-- Thought Process Panel -->
+            <div class="mb-6">
+                <h3 class="font-semibold mb-3 text-gray-700">Thought Process & Agent Activity</h3>
+                <div id="thought-process-panel" class="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto space-y-2">
+                    <div class="text-sm text-gray-500 italic">Waiting for supervisor decisions...</div>
+                </div>
+            </div>
+
+            <!-- Progress Messages -->
+            <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                <h3 class="font-medium mb-2 flex items-center text-blue-900">
+                    <div class="spinner mr-2 border-blue-600 border-t-transparent"></div>
+                    System Messages
                 </h3>
-                <div id="progress-messages" class="text-sm text-gray-600 space-y-1"></div>
+                <div id="progress-messages" class="text-sm text-blue-800 space-y-1 max-h-48 overflow-y-auto"></div>
             </div>
         </div>
 
@@ -156,21 +175,6 @@
                     <div class="text-center">
                         <div class="text-3xl font-bold text-orange-600" id="metric-iterations">-</div>
                         <div class="text-sm text-gray-600 mt-1">Critic Iterations</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Model Comparison -->
-            <div id="model-comparison-section" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
-                <h2 class="text-2xl font-semibold mb-4">Model Analysis Comparison</h2>
-                <div class="grid md:grid-cols-2 gap-6">
-                    <div id="model-a-analysis" class="border-l-4 border-blue-500 pl-4">
-                        <h3 class="font-semibold text-lg mb-2 text-blue-700">Model A (Claude Haiku)</h3>
-                        <div id="model-a-content" class="text-sm text-gray-700"></div>
-                    </div>
-                    <div id="model-b-analysis" class="border-l-4 border-green-500 pl-4">
-                        <h3 class="font-semibold text-lg mb-2 text-green-700">Model B (Llama Maverick)</h3>
-                        <div id="model-b-content" class="text-sm text-gray-700"></div>
                     </div>
                 </div>
             </div>
@@ -319,7 +323,15 @@
             document.getElementById('progress-section').classList.remove('hidden');
             document.getElementById('results-section').classList.add('hidden');
             document.getElementById('progress-messages').innerHTML = '';
-            resetStages();
+
+            // Reset agent status indicators
+            document.getElementById('agent-supervisor').className = 'agent-status p-3 rounded-lg border-2 border-blue-300 bg-blue-50';
+            document.getElementById('agent-summarizer').className = 'agent-status stage-pending p-3 rounded-lg border-2 border-gray-200';
+            document.getElementById('agent-notes').className = 'agent-status stage-pending p-3 rounded-lg border-2 border-gray-200';
+            document.getElementById('agent-factcheck').className = 'agent-status stage-pending p-3 rounded-lg border-2 border-gray-200';
+
+            // Reset thought process panel
+            document.getElementById('thought-process-panel').innerHTML = '<div class="text-sm text-gray-500 italic">Waiting for supervisor decisions...</div>';
 
             // Close existing connection
             if (currentEventSource) {
@@ -336,108 +348,112 @@
                 fetchOptions.headers = { 'Content-Type': 'application/json' };
             }
 
+            console.log('[SSE] Starting fetch request to:', url);
+
             fetch(url, fetchOptions)
                 .then(response => {
+                    console.log('[SSE] Response received, status:', response.status);
                     const reader = response.body.getReader();
                     const decoder = new TextDecoder();
+                    let chunkCount = 0;
 
                     function readStream() {
                         reader.read().then(({ done, value }) => {
                             if (done) {
-                                console.log('Stream complete');
+                                console.log('[SSE] Stream complete, total chunks:', chunkCount);
                                 return;
                             }
 
+                            chunkCount++;
                             const chunk = decoder.decode(value);
-                            const lines = chunk.split('\n');
+                            console.log(`[SSE] Chunk ${chunkCount} received (${chunk.length} bytes):`, chunk.substring(0, 100));
 
-                            lines.forEach(line => {
+                            const lines = chunk.split('\n');
+                            console.log(`[SSE] Processing ${lines.length} lines from chunk`);
+
+                            lines.forEach((line, idx) => {
                                 if (line.startsWith('data: ')) {
-                                    const data = JSON.parse(line.substring(6));
-                                    handleSSEEvent(data);
+                                    try {
+                                        const jsonStr = line.substring(6);
+                                        console.log(`[SSE] Parsing line ${idx}:`, jsonStr.substring(0, 100));
+                                        const data = JSON.parse(jsonStr);
+                                        console.log('[SSE] Event parsed successfully:', data.type || data.stage, '|', data.agent || 'N/A');
+                                        handleSSEEvent(data);
+                                    } catch (parseError) {
+                                        console.error('[SSE] JSON parse error:', parseError);
+                                        console.error('[SSE] Failed line:', line);
+                                        addMessage('⚠️ Parse error: ' + parseError.message, true);
+                                    }
                                 }
                             });
 
                             readStream();
+                        }).catch(streamError => {
+                            console.error('[SSE] Stream read error:', streamError);
+                            addMessage('⚠️ Stream error: ' + streamError.message, true);
                         });
                     }
 
                     readStream();
                 })
                 .catch(error => {
-                    console.error('Error:', error);
+                    console.error('[SSE] Fetch error:', error);
                     addMessage('Error: ' + error.message, true);
                 });
         }
 
         function handleSSEEvent(data) {
-            const { stage, message, node, result, model_data, critic_iterations, output_files } = data;
+            console.log('[SSE] handleSSEEvent called with data:', data);
+            const { stage, message, node, result, type, agent, action, target_agent, details, error } = data;
 
             // Store timeline event
-            if (message && node) {
+            if (message && (node || agent)) {
                 timelineEvents.push({
                     timestamp: new Date().toLocaleTimeString(),
-                    node: node,
+                    node: node || agent,
                     message: message,
-                    stage: stage
+                    stage: stage,
+                    type: type
                 });
             }
 
-            // Capture model data for display
-            if (model_data) {
-                if (node === 'model_a' && model_data.model_a) {
-                    modelData.model_a = model_data.model_a;
-                } else if (node === 'model_b' && model_data.model_b) {
-                    modelData.model_b = model_data.model_b;
-                } else if (node === 'supervisor' && model_data.supervisor) {
-                    modelData.supervisor = model_data.supervisor;
-                } else if (node === 'fact_checker' && model_data.fact_check_current) {
-                    modelData.fact_check = model_data.fact_check_current;
-                    // Capture research quality
-                    if (model_data.fact_check_current.research_quality) {
-                        qualityMetrics.research_quality = model_data.fact_check_current.research_quality;
-                    }
-                } else if (node === 'critic' && model_data.critic_current) {
-                    modelData.critic = model_data.critic_current;
-                    // Capture critic score
-                    if (model_data.critic_current.quality_score) {
-                        qualityMetrics.critic_score = model_data.critic_current.quality_score;
-                    }
-                }
-            }
+            // Handle different event types
+            if (type === 'supervisor_decision') {
+                // Supervisor is calling an agent
+                updateCurrentAgent(target_agent, message);
+                updateAgentStatus(target_agent, 'calling');
+                addThoughtProcessMessage('supervisor', `🤔 ${message}`, 'decision');
+                addMessage(`Supervisor → ${target_agent}`);
+            } else if (type === 'agent_complete') {
+                // Agent finished its work
+                updateAgentStatus(agent, 'complete');
+                addThoughtProcessMessage(agent, `✓ ${message}`, 'complete');
+                addMessage(`${agent} completed: ${details || ''}`);
 
-            // Progressive display: show results as they become available
-            if (node === 'model_a' || node === 'model_b') {
-                displayModelComparisonProgressive();
-            }
-            if (node === 'supervisor') {
-                displaySupervisorProgressive();
-            }
-            if (node === 'fact_checker') {
-                displayFactCheckProgressive();
-            }
-            if (node === 'critic') {
-                displayCriticProgressive();
-            }
-
-            // Add message
-            if (message) {
+                // Update current agent back to supervisor
+                updateCurrentAgent('Supervisor', 'Reviewing results and deciding next steps...');
+            } else if (type === 'supervisor_reasoning') {
+                // Supervisor's thought process
+                addThoughtProcessMessage('supervisor', `💭 ${message}`, 'reasoning');
                 addMessage(message);
-            }
-
-            // Update stage indicators
-            if (stage) {
-                updateStage(stage);
+            } else if (type === 'agent_error') {
+                // Agent encountered an error
+                updateAgentStatus(agent, 'error');
+                addThoughtProcessMessage(agent, `❌ ${message}`, 'error');
+                addMessage(message, true);
+            } else if (type === 'node_complete') {
+                // Node finished processing
+                addMessage(message);
+            } else if (message) {
+                // Generic message
+                addMessage(message);
             }
 
             // Handle completion
             if (stage === 'complete' && result) {
+                updateCurrentAgent('Complete', 'All agents finished successfully!');
+                markAllAgentsComplete();
                 displayResults(result);
-
-                // Show download buttons if output files are available
-                if (output_files) {
-                    displayDownloadButtons(output_files);
-                }
             } else if (stage === 'error') {
                 addMessage(message, true);
 
@@ -457,6 +473,115 @@
             }
         }
 
+        function updateCurrentAgent(agentName, action) {
+            const nameEl = document.getElementById('current-agent-name');
+            const actionEl = document.getElementById('current-agent-action');
+
+            // Map agent names to display names
+            const displayNames = {
+                'Summarizing Agent': 'Summarizing Agent',
+                'Note Extraction Agent': 'Note Extraction Agent',
+                'Fact Checking Agent': 'Fact Checking Agent',
+                'Supervisor': 'Supervisor (Editor-in-Chief)',
+                'Complete': 'Workflow Complete ✓'
+            };
+
+            nameEl.textContent = displayNames[agentName] || agentName;
+            actionEl.textContent = action;
+
+            // Update indicator color based on agent
+            const indicator = document.getElementById('current-agent-indicator');
+            if (agentName === 'Complete') {
+                indicator.className = 'bg-gradient-to-r from-green-500 to-emerald-600 text-white p-4 rounded-lg shadow-lg';
+            } else if (agentName.includes('Supervisor')) {
+                indicator.className = 'bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 rounded-lg shadow-lg';
+            } else {
+                indicator.className = 'bg-gradient-to-r from-orange-500 to-pink-600 text-white p-4 rounded-lg shadow-lg';
+            }
+        }
+
+        function updateAgentStatus(agentName, status) {
+            // Map agent names to element IDs
+            const agentIds = {
+                'Summarizing Agent': 'agent-summarizer',
+                'Note Extraction Agent': 'agent-notes',
+                'Fact Checking Agent': 'agent-factcheck',
+                'Supervisor': 'agent-supervisor'
+            };
+
+            const elementId = agentIds[agentName];
+            if (!elementId) return;
+
+            const el = document.getElementById(elementId);
+            const statusDiv = el.querySelector('.text-xs');
+
+            if (status === 'calling') {
+                el.className = 'agent-status p-3 rounded-lg border-2 border-orange-400 bg-orange-50';
+                statusDiv.textContent = 'Working...';
+                statusDiv.className = 'text-xs text-orange-700 mt-1';
+            } else if (status === 'complete') {
+                el.className = 'agent-status p-3 rounded-lg border-2 border-green-400 bg-green-50';
+                statusDiv.textContent = 'Complete ✓';
+                statusDiv.className = 'text-xs text-green-700 mt-1';
+            } else if (status === 'error') {
+                el.className = 'agent-status p-3 rounded-lg border-2 border-red-400 bg-red-50';
+                statusDiv.textContent = 'Error ✗';
+                statusDiv.className = 'text-xs text-red-700 mt-1';
+            }
+        }
+
+        function markAllAgentsComplete() {
+            ['Summarizing Agent', 'Note Extraction Agent', 'Fact Checking Agent', 'Supervisor'].forEach(agent => {
+                updateAgentStatus(agent, 'complete');
+            });
+        }
+
+        function addThoughtProcessMessage(agent, message, messageType) {
+            const panel = document.getElementById('thought-process-panel');
+
+            // Remove initial placeholder if exists
+            if (panel.querySelector('.italic')) {
+                panel.innerHTML = '';
+            }
+
+            const messageEl = document.createElement('div');
+            const timestamp = new Date().toLocaleTimeString();
+
+            // Color coding based on message type
+            let bgColor = 'bg-gray-100';
+            let textColor = 'text-gray-800';
+            let borderColor = 'border-gray-300';
+
+            if (messageType === 'decision') {
+                bgColor = 'bg-blue-50';
+                textColor = 'text-blue-900';
+                borderColor = 'border-blue-300';
+            } else if (messageType === 'complete') {
+                bgColor = 'bg-green-50';
+                textColor = 'text-green-900';
+                borderColor = 'border-green-300';
+            } else if (messageType === 'reasoning') {
+                bgColor = 'bg-purple-50';
+                textColor = 'text-purple-900';
+                borderColor = 'border-purple-300';
+            } else if (messageType === 'error') {
+                bgColor = 'bg-red-50';
+                textColor = 'text-red-900';
+                borderColor = 'border-red-300';
+            }
+
+            messageEl.className = `${bgColor} ${textColor} border-l-4 ${borderColor} p-2 rounded text-sm`;
+            messageEl.innerHTML = `
+                <div class="flex items-start">
+                    <span class="text-xs opacity-60 mr-2">${timestamp}</span>
+                    <span class="flex-1">${message}</span>
+                </div>
+            `;
+
+            panel.appendChild(messageEl);
+            panel.scrollTop = panel.scrollHeight;
+        }
+
         function addMessage(message, isError = false) {
             const messagesDiv = document.getElementById('progress-messages');
             const messageEl = document.createElement('div');
@@ -466,38 +591,8 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        function resetStages() {
-            ['parallel', 'supervisor', 'fact-check', 'critic', 'complete'].forEach(stage => {
-                const el = document.getElementById(`stage-${stage}`);
-                el.className = 'stage-indicator stage-pending p-3 rounded-lg text-center';
-            });
-        }
-
-        function updateStage(stage) {
-            const stageMap = {
-                'started': 'parallel',
-                'model_a_complete': 'parallel',
-                'model_b_complete': 'parallel',
-                'supervisor_complete': 'supervisor',
-                'fact_check_complete': 'fact-check',
-                'critic_complete': 'critic',
-                'complete': 'complete'
-            };
-
-            const mappedStage = stageMap[stage];
-            if (!mappedStage) return;
-
-            const el = document.getElementById(`stage-${mappedStage}`);
-            if (stage === 'complete') {
-                // Mark all as complete
-                Object.values(stageMap).forEach(s => {
-                    const stageEl = document.getElementById(`stage-${s}`);
-                    stageEl.className = 'stage-indicator stage-complete p-3 rounded-lg text-center';
-                });
-            } else {
-                el.className = 'stage-indicator stage-complete p-3 rounded-lg text-center';
-            }
-        }
+        // Legacy functions removed - old stage indicators no longer exist
+        // Agent status is now managed by updateAgentStatus() function
 
         function displayResults(result) {
             // Hide progress section with spinner
@@ -509,73 +604,117 @@
             // Populate Timeline
             displayTimeline();
 
-            // Populate Quality Metrics
-            displayQualityMetrics(result);
+            // Populate Quality Metrics (NEW STRUCTURE)
+            displayQualityMetricsNew(result);
 
-            // Populate Model Comparison (if data available)
-            displayModelComparison();
+            // Summary (from summarizing agent)
+            if (result.summary && result.summary.summary) {
+                document.getElementById('result-summary').innerHTML = parseMarkdown(result.summary.summary);
+            }
 
-            // Summary
-            document.getElementById('result-summary').textContent = result.summary.final_summary;
+            // Topics (from notes agent)
+            if (result.notes && result.notes.topics) {
+                const topicsList = document.getElementById('result-topics');
+                topicsList.innerHTML = result.notes.topics.map(t => `<li>${parseMarkdown(t)}</li>`).join('');
+            }
 
-            // Topics
-            const topicsList = document.getElementById('result-topics');
-            topicsList.innerHTML = result.summary.main_topics.map(t => `<li>${t}</li>`).join('');
+            // Takeaways (from notes agent)
+            if (result.notes && result.notes.top_takeaways) {
+                const takeawaysList = document.getElementById('result-takeaways');
+                takeawaysList.innerHTML = result.notes.top_takeaways.map(t => `<li>${parseMarkdown(t)}</li>`).join('');
+            }
 
-            // Takeaways
-            const takeawaysList = document.getElementById('result-takeaways');
-            takeawaysList.innerHTML = result.summary.key_takeaways.map(t => `<li>${t}</li>`).join('');
-
-            // Quotes
-            if (result.summary.notable_quotes && result.summary.notable_quotes.length > 0) {
+            // Quotes (from notes agent)
+            if (result.notes && result.notes.notable_quotes && result.notes.notable_quotes.length > 0) {
                 const quotesDiv = document.getElementById('quotes-section');
                 quotesDiv.innerHTML = '<h3 class="font-semibold mb-2">Notable Quotes</h3>' +
-                    result.summary.notable_quotes.map(q =>
+                    result.notes.notable_quotes.map(q =>
                         `<blockquote class="border-l-4 border-blue-500 pl-4 mb-2 italic text-gray-700">
                             "${q.text}" ${q.speaker ? `— ${q.speaker}` : ''}
+                            ${q.timestamp ? `<span class="text-xs text-gray-500 block mt-1">@ ${q.timestamp}</span>` : ''}
                         </blockquote>`
                     ).join('');
             }
 
-            // Confidence and iterations
-            document.getElementById('result-confidence').textContent =
-                (result.confidence_in_analysis * 100).toFixed(0) + '%';
-            document.getElementById('result-iterations').textContent = result.critic_iterations;
+            // Fact check table (from fact checking agent)
+            if (result.fact_check && result.fact_check.verified_claims) {
+                const tableDiv = document.getElementById('fact-check-table');
 
-            // Fact check table
-            const tableDiv = document.getElementById('fact-check-table');
-            tableDiv.innerHTML = `
-                <table class="w-full text-sm">
-                    <thead class="bg-gray-100">
-                        <tr>
-                            <th class="p-2 text-left">Claim</th>
-                            <th class="p-2 text-left">Status</th>
-                            <th class="p-2 text-left">Confidence</th>
-                            <th class="p-2 text-left">Sources</th>
-                            <th class="p-2 text-left">Reasoning</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${result.fact_check.verified_claims.map(claim => `
-                            <tr class="border-t">
-                                <td class="p-2">${claim.claim}</td>
-                                <td class="p-2">
-                                    <span class="px-2 py-1 rounded text-xs ${getStatusColor(claim.verification_status)}">
-                                        ${claim.verification_status}
-                                    </span>
-                                </td>
-                                <td class="p-2">${(claim.confidence * 100).toFixed(0)}%</td>
-                                <td class="p-2">
-                                    ${claim.sources.map(s =>
-                                        `<a href="${s.url}" target="_blank" class="text-blue-600 hover:underline block">${s.title}</a>`
-                                    ).join('')}
-                                </td>
-                                <td class="p-2 text-xs text-gray-600">${claim.reasoning}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `;
+                // Check if there are any claims to display
+                if (result.fact_check.verified_claims.length > 0) {
+                    tableDiv.innerHTML = `
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="p-2 text-left">Claim</th>
+                                    <th class="p-2 text-left">Status</th>
+                                    <th class="p-2 text-left">Confidence</th>
+                                    <th class="p-2 text-left">Sources</th>
+                                    <th class="p-2 text-left">Reasoning</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${result.fact_check.verified_claims.map(claim => `
+                                    <tr class="border-t">
+                                        <td class="p-2">${parseMarkdown(claim.claim)}</td>
+                                        <td class="p-2">
+                                            <span class="px-2 py-1 rounded text-xs ${getStatusColor(claim.verification_status)}">
+                                                ${claim.verification_status}
+                                            </span>
+                                        </td>
+                                        <td class="p-2">${(claim.confidence * 100).toFixed(0)}%</td>
+                                        <td class="p-2">
+                                            ${claim.sources && claim.sources.length > 0 ? claim.sources.map(s =>
+                                                `<a href="${s.url}" target="_blank" class="text-blue-600 hover:underline block text-xs">${s.title || s.url}</a>`
+                                            ).join('') : '<span class="text-gray-400 text-xs">No sources</span>'}
+                                        </td>
+                                        <td class="p-2 text-xs text-gray-600">${parseMarkdown(claim.reasoning)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                } else {
+                    // Display empty state message
+                    tableDiv.innerHTML = `
+                        <div class="p-4 bg-gray-50 rounded-lg text-center">
+                            <p class="text-gray-500 italic">No factual claims were identified for verification in this podcast.</p>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        function displayQualityMetricsNew(result) {
+            // Update metrics from new structure
+            const metadata = result.metadata || {};
+
+            // Overall confidence (from fact check)
+            if (result.fact_check && result.fact_check.overall_reliability !== undefined) {
+                document.getElementById('metric-confidence').textContent =
+                    (result.fact_check.overall_reliability * 100).toFixed(0) + '%';
+            } else {
+                document.getElementById('metric-confidence').textContent = 'N/A';
+            }
+
+            // Research quality (from fact check)
+            if (result.fact_check && result.fact_check.research_quality !== undefined) {
+                document.getElementById('metric-research').textContent =
+                    (result.fact_check.research_quality * 100).toFixed(0) + '%';
+            } else {
+                document.getElementById('metric-research').textContent = 'N/A';
+            }
+
+            // Agents invoked
+            document.getElementById('metric-critic').textContent = metadata.agents_invoked || '3';
+
+            // Total tool calls
+            document.getElementById('metric-iterations').textContent = metadata.total_tool_calls || '0';
+
+            // Update metric labels to match new architecture
+            const metricLabels = document.querySelectorAll('#results-section .text-sm.text-gray-600.mt-1');
+            if (metricLabels[2]) metricLabels[2].textContent = 'Agents Invoked';
+            if (metricLabels[3]) metricLabels[3].textContent = 'Total Tool Calls';
         }
 
         function displayTimeline() {
@@ -601,74 +740,14 @@
             }).join('');
         }
 
-        function displayQualityMetrics(result) {
-            // Overall Confidence
-            document.getElementById('metric-confidence').textContent =
-                (result.confidence_in_analysis * 100).toFixed(0) + '%';
-
-            // Research Quality (from fact-checker)
-            const researchQuality = qualityMetrics.research_quality ||
-                (result.fact_check ? result.fact_check.research_quality : null);
-            document.getElementById('metric-research').textContent =
-                researchQuality ? (researchQuality * 100).toFixed(0) + '%' : 'N/A';
-
-            // Critic Score
-            const criticScore = qualityMetrics.critic_score;
-            document.getElementById('metric-critic').textContent =
-                criticScore ? (criticScore * 100).toFixed(0) + '%' : 'N/A';
-
-            // Iterations
-            document.getElementById('metric-iterations').textContent = result.critic_iterations;
-        }
-
-        function displayModelComparison() {
-            // Only show if we have both model A and B data
-            if (modelData.model_a && modelData.model_b) {
-                document.getElementById('model-comparison-section').classList.remove('hidden');
-
-                // Model A
-                const modelAHtml = `
-                    <div class="mb-3">
-                        <div class="font-medium text-sm mb-1">Topics (${modelData.model_a.topics.length}):</div>
-                        <ul class="list-disc list-inside text-xs space-y-1">
-                            ${modelData.model_a.topics.map(t => `<li>${t}</li>`).join('')}
-                        </ul>
-                    </div>
-                    <div>
-                        <div class="font-medium text-sm mb-1">Key Points (${modelData.model_a.key_points.length}):</div>
-                        <ul class="list-disc list-inside text-xs space-y-1">
-                            ${modelData.model_a.key_points.map(p => `<li>${p}</li>`).join('')}
-                        </ul>
-                    </div>
-                `;
-                document.getElementById('model-a-content').innerHTML = modelAHtml;
-
-                // Model B
-                const modelBHtml = `
-                    <div class="mb-3">
-                        <div class="font-medium text-sm mb-1">Topics (${modelData.model_b.topics.length}):</div>
-                        <ul class="list-disc list-inside text-xs space-y-1">
-                            ${modelData.model_b.topics.map(t => `<li>${t}</li>`).join('')}
-                        </ul>
-                    </div>
-                    <div>
-                        <div class="font-medium text-sm mb-1">Key Points (${modelData.model_b.key_points.length}):</div>
-                        <ul class="list-disc list-inside text-xs space-y-1">
-                            ${modelData.model_b.key_points.map(p => `<li>${p}</li>`).join('')}
-                        </ul>
-                    </div>
-                `;
-                document.getElementById('model-b-content').innerHTML = modelBHtml;
-            }
+        function parseMarkdown(text) {
+            if (!text) return '';
+            return marked.parse(text);
         }
 
         function formatNodeName(node) {
             const names = {
-                'model_a': 'Model A (Claude Haiku)',
-                'model_b': 'Model B (Llama Maverick)',
-                'supervisor': 'Supervisor (Claude Sonnet)',
-                'fact_checker': 'Fact-Checker (GPT-4o)',
-                'critic': 'Critic (Claude Sonnet)'
+                'supervisor': 'Supervisor (Llama Maverick)'
             };
             return names[node] || node;
         }
@@ -681,102 +760,6 @@
                 'false': 'bg-red-100 text-red-800'
             };
             return colors[status] || 'bg-gray-100 text-gray-800';
-        }
-
-        // Progressive display functions - show results as they become available
-
-        function displayModelComparisonProgressive() {
-            if (modelData.model_a && modelData.model_b) {
-                document.getElementById('results-section').classList.remove('hidden');
-                document.getElementById('model-comparison-section').classList.remove('hidden');
-                displayModelComparison();
-            }
-        }
-
-        function displaySupervisorProgressive() {
-            if (modelData.supervisor) {
-                document.getElementById('results-section').classList.remove('hidden');
-
-                const summary = modelData.supervisor;
-                document.getElementById('result-summary').textContent = summary.final_summary;
-
-                const topicsList = document.getElementById('result-topics');
-                topicsList.innerHTML = summary.main_topics.map(t => `<li>${t}</li>`).join('');
-
-                const takeawaysList = document.getElementById('result-takeaways');
-                takeawaysList.innerHTML = summary.key_takeaways.map(t => `<li>${t}</li>`).join('');
-
-                // Quotes if available
-                if (summary.notable_quotes && summary.notable_quotes.length > 0) {
-                    const quotesDiv = document.getElementById('quotes-section');
-                    quotesDiv.innerHTML = '<h3 class="font-semibold mb-2">Notable Quotes</h3>' +
-                        summary.notable_quotes.map(q =>
-                            `<blockquote class="border-l-4 border-blue-500 pl-4 mb-2 italic text-gray-700">
-                                "${q.text}" ${q.speaker ? `— ${q.speaker}` : ''}
-                            </blockquote>`
-                        ).join('');
-                }
-            }
-        }
-
-        function displayFactCheckProgressive() {
-            if (modelData.fact_check) {
-                document.getElementById('results-section').classList.remove('hidden');
-
-                const factCheck = modelData.fact_check;
-
-                // Update quality metrics
-                if (factCheck.research_quality) {
-                    document.getElementById('metric-research').textContent =
-                        (factCheck.research_quality * 100).toFixed(0) + '%';
-                }
-                if (factCheck.overall_reliability) {
-                    document.getElementById('metric-confidence').textContent =
-                        (factCheck.overall_reliability * 100).toFixed(0) + '%';
-                }
-
-                // Display fact-check table
-                const tableDiv = document.getElementById('fact-check-table');
-                tableDiv.innerHTML = `
-                    <table class="w-full text-sm">
-                        <thead class="bg-gray-100">
-                            <tr>
-                                <th class="p-2 text-left">Claim</th>
-                                <th class="p-2 text-left">Status</th>
-                                <th class="p-2 text-left">Confidence</th>
-                                <th class="p-2 text-left">Sources</th>
-                                <th class="p-2 text-left">Reasoning</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${factCheck.verified_claims.map(claim => `
-                                <tr class="border-t">
-                                    <td class="p-2">${claim.claim}</td>
-                                    <td class="p-2">
-                                        <span class="px-2 py-1 rounded text-xs ${getStatusColor(claim.verification_status)}">
-                                            ${claim.verification_status}
-                                        </span>
-                                    </td>
-                                    <td class="p-2">${(claim.confidence * 100).toFixed(0)}%</td>
-                                    <td class="p-2">
-                                        ${claim.sources.map(s =>
-                                            `<a href="${s.url}" target="_blank" class="text-blue-600 hover:underline block">${s.title}</a>`
-                                        ).join('')}
-                                    </td>
-                                    <td class="p-2 text-xs text-gray-600">${claim.reasoning}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                `;
-            }
-        }
-
-        function displayCriticProgressive() {
-            if (modelData.critic) {
-                document.getElementById('metric-critic').textContent =
-                    (modelData.critic.quality_score * 100).toFixed(0) + '%';
-            }
         }
 
         function displayDownloadButtons(outputFiles) {

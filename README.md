@@ -1,34 +1,43 @@
 # Podcast Agent - AI-Powered Podcast Analysis
 
-A sophisticated multi-agent system built with LangGraph that analyzes podcast transcripts using parallel processing, supervisor consolidation, deep fact-checking, and critic loops.
+A sophisticated multi-agent system built with LangGraph that analyzes podcast transcripts using a supervisor-coordinated workflow with intelligent specialist agents, deep fact-checking, and comprehensive CloudWatch-compatible logging.
 
 ## Features
 
-- **True Parallel LLM Processing**: Models A & B (Claude Haiku + GPT-4o-mini) analyze transcripts simultaneously using LangGraph parallel execution
-- **Supervisor Consolidation**: Model C (Claude Sonnet) reviews and merges analyses
-- **Deep Fact-Checking**: Model D (GPT-4o) verifies claims using multiple search tools
-- **Critic Loop**: Quality control with iterative improvement (configurable iterations)
+- **Supervisor-Coordinated Workflow**: Editor-in-Chief agent orchestrates specialist agents as tools
+- **Intelligent Failover**: Llama Maverick primary models with automatic failover to Claude Haiku
+- **Real-Time Specialist Agents**:
+  - Summarizing Agent: Extracts core themes and comprehensive summaries
+  - Note Extraction Agent: Pulls out takeaways, quotes, topics, and factual statements
+  - Fact Checking Agent: Verifies claims using multiple search tools
 - **Real-Time Progress**: Server-Sent Events (SSE) for live updates with detailed agent reasoning
+- **CloudWatch-Ready Logging**: Structured JSON logs with session tracking for AWS CloudWatch
 - **Auto-Validation Retry**: LLM self-correction mechanism for Pydantic validation failures
 - **Output Files**: Automatically generates JSON and Markdown reports with fact-check tables
 - **Single Container Deployment**: Easy Docker deployment to Render.com or any Docker platform
-- **Professional UI**: Clean, responsive interface built with Tailwind CSS
-- **Comprehensive Logging**: Detailed logs showing agent reasoning steps and decision-making
+- **Professional UI**: Clean, responsive interface with real-time thought process visualization
+- **Session Tracking**: Unique session IDs for each analysis with full traceability
 
 ## Architecture
 
 ### Agent Workflow
 
 ```
-START → Parallel(A,B) → Supervisor(C) → FactCheck(D) → Critic → [Loop or END]
+START → Supervisor → [Summarizing Agent, Note Extraction Agent, Fact Checking Agent] → END
 ```
 
-### Models Used
+The Supervisor agent acts as an Editor-in-Chief, coordinating specialist agents via tool calling. Each specialist agent completes its task independently, and the Supervisor consolidates all results.
 
-- **Model A**: Claude 3 Haiku (fast, cost-effective parallel processing)
-- **Model B**: GPT-4o-mini (diverse perspective for parallel processing)
-- **Model C**: Claude 3.5 Sonnet (advanced reasoning for supervision)
-- **Model D**: GPT-4o (comprehensive fact-checking with tool access)
+### Models Used (with Failover)
+
+All agents use **Llama Maverick** as primary with automatic failover to **Claude Haiku 4.5**:
+
+- **Supervisor Agent**: Llama-4-Maverick-17B → Claude Haiku 4.5 (fallback)
+- **Summarizing Agent**: Llama-4-Maverick-17B → Claude Haiku 4.5 (fallback)
+- **Note Extraction Agent**: Llama-4-Maverick-17B → Claude Haiku 4.5 (fallback)
+- **Fact Checking Agent**: Llama-4-Maverick-17B → Claude Haiku 4.5 (fallback)
+
+**Failover Triggers**: API errors, rate limits, network errors, or any model failure automatically triggers fallback to Claude Haiku with full CloudWatch logging.
 
 ### Search Tools
 
@@ -38,18 +47,27 @@ START → Parallel(A,B) → Supervisor(C) → FactCheck(D) → Critic → [Loop 
 
 *(At least one search tool API key required)*
 
-## Quick Start
+## Quick Start (macOS)
 
 ### Prerequisites
 
-- Python 3.12+
-- Docker & Docker Compose (for containerized deployment)
-- API Keys:
-  - Anthropic API key (for Claude models)
-  - OpenAI API key (for GPT models)
-  - At least one search tool API key (Tavily, Serper, or Brave)
+1. **Homebrew** (if not installed):
+   ```bash
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+   ```
 
-### Installation
+2. **Docker Desktop for Mac**:
+   ```bash
+   brew install --cask docker
+   # Open Docker Desktop from Applications to complete setup
+   ```
+
+3. **Git** (usually pre-installed):
+   ```bash
+   brew install git  # If needed
+   ```
+
+### 5-Minute Setup
 
 1. **Clone the repository**
    ```bash
@@ -57,73 +75,200 @@ START → Parallel(A,B) → Supervisor(C) → FactCheck(D) → Critic → [Loop 
    cd assignment
    ```
 
-2. **Set up environment variables**
+2. **Configure API keys**
    ```bash
    cp .env.example .env
-   # Edit .env and add your API keys
+   # Edit .env with your actual API keys (see API Keys section below)
+   nano .env  # or use your preferred editor
    ```
 
-3. **Choose your deployment method**
+3. **Start with Docker**
+   ```bash
+   docker-compose up --build
+   ```
 
-#### Option A: Docker (Recommended)
+4. **Access the application**
+   ```
+   http://localhost:8000
+   ```
+
+5. **Verify it's working**
+   ```bash
+   curl http://localhost:8000/api/health
+   ```
+
+## API Keys Setup
+
+### Required API Keys
+
+#### 1. Anthropic API Key
+**Used for**: Claude Haiku 4.5 (failover model for all agents)
+
+**Get your key**:
+1. Visit https://console.anthropic.com/
+2. Sign up or log in
+3. Go to "API Keys" section
+4. Create a new key
+5. Copy the key (starts with `sk-ant-`)
 
 ```bash
-# Build and run with Docker Compose
-docker-compose up --build
-
-# Access the application at http://localhost:8000
+ANTHROPIC_API_KEY=sk-ant-api03-...
 ```
 
-#### Option B: Local Development with uv
+#### 2. Llama API Key
+**Used for**: Llama-4-Maverick-17B (primary model for all agents)
+
+**Get your key**:
+1. Visit https://www.llama-api.com/ or your Llama API provider
+2. Sign up for an account
+3. Generate an API key
+4. Copy the key
 
 ```bash
-# Install uv if not already installed
+LLAMA_API_KEY=LL-...
+```
+
+#### 3. Search Tool API Key (Choose at least ONE)
+
+**Option A: Tavily (Recommended)**
+- Visit https://tavily.com/
+- Sign up and get your API key
+- Free tier: 1,000 requests/month
+
+```bash
+TAVILY_API_KEY=tvly-...
+```
+
+**Option B: Serper**
+- Visit https://serper.dev/
+- Sign up and get your API key
+- Free tier: 2,500 requests/month
+
+```bash
+SERPER_API_KEY=...
+```
+
+**Option C: Brave Search**
+- Visit https://brave.com/search/api/
+- Request API access
+- Get your API key
+
+```bash
+BRAVE_API_KEY=...
+```
+
+### Optional API Keys
+
+#### LangSmith (for Observability & Debugging)
+
+**Get your key**:
+1. Visit https://smith.langchain.com/
+2. Sign up or log in
+3. Go to Settings → API Keys
+4. Create a new key
+
+```bash
+LANGSMITH_TRACING=true
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+LANGSMITH_API_KEY=lsv2_pt_...
+LANGSMITH_PROJECT=your-project-name
+```
+
+### Complete .env File Example
+
+```bash
+# LLM API Keys (Required)
+ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+LLAMA_API_KEY=LL-your-key-here
+
+# Search Tool API Keys (At least one required)
+TAVILY_API_KEY=tvly-your-key-here
+SERPER_API_KEY=your-serper-key-here  # Optional
+BRAVE_API_KEY=your-brave-key-here    # Optional
+
+# LangSmith Tracing (Optional - for observability)
+LANGSMITH_TRACING=true
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+LANGSMITH_API_KEY=lsv2_pt_your-key-here
+LANGSMITH_PROJECT=podcast-analysis
+```
+
+## Installation
+
+### Option A: Docker (Recommended)
+
+#### Install Docker Desktop (if not already installed)
+```bash
+brew install --cask docker
+```
+
+Open Docker Desktop from Applications and wait for it to start (Docker icon appears in menu bar).
+
+#### Build and Run
+```bash
+# Clone repository
+git clone <repository-url>
+cd assignment
+
+# Configure environment variables
+cp .env.example .env
+nano .env  # Add your API keys
+
+# Build and start the application
+docker-compose up --build
+
+# The application will be available at http://localhost:8000
+```
+
+#### Docker Commands
+
+```bash
+# Start in detached mode (background)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop the application
+docker-compose down
+
+# Rebuild after code changes
+docker-compose up --build
+
+# Clean rebuild (clears cache)
+docker-compose build --no-cache
+docker-compose up
+```
+
+### Option B: Local Development
+
+#### Install Python 3.12+
+```bash
+brew install python@3.12
+```
+
+#### Install uv (Fast Python Package Manager)
+```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
+# Restart your terminal or run:
+source $HOME/.cargo/env
+```
+
+#### Install Dependencies and Run
+```bash
+# Clone repository
+git clone <repository-url>
+cd assignment
+
+# Configure environment variables
+cp .env.example .env
+nano .env  # Add your API keys
 
 # Install dependencies
 uv pip install -e .
 
 # Run the application
 uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-## Configuration
-
-### Environment Variables (.env)
-
-```bash
-# LLM API Keys (Required)
-ANTHROPIC_API_KEY=your_anthropic_key_here
-OPENAI_API_KEY=your_openai_key_here
-
-# Search Tool API Keys (At least one required)
-TAVILY_API_KEY=your_tavily_key_here
-SERPER_API_KEY=your_serper_key_here
-BRAVE_API_KEY=your_brave_key_here
-```
-
-### Application Settings (config.yaml)
-
-```yaml
-models:
-  model_a:
-    provider: "anthropic"
-    name: "claude-3-haiku-20240307"
-    temperature: 0.3
-    max_tokens: 2000
-  # ... (see config.yaml for full configuration)
-
-search_tools:
-  tavily:
-    search_depth: "advanced"
-    max_results: 10
-  # ...
-
-app:
-  debug: false
-  max_retries: 3
-  critic_loops: 2  # Maximum critic loop iterations
-  stream_delay_ms: 100
 ```
 
 ## Usage
@@ -133,14 +278,25 @@ app:
 1. Navigate to `http://localhost:8000`
 2. Choose input method:
    - **Sample Transcripts**: Select from pre-loaded examples
-   - **Upload File**: Upload .txt or .json file
+   - **Upload File**: Upload .txt or .json file (minimum 100 characters)
    - **Paste Text**: Directly paste transcript text
-3. Click "Analyze" and watch real-time progress
-4. Review results including summary, topics, and fact-checked claims
+3. Click "Analyze" and watch real-time progress with:
+   - Supervisor decisions and agent coordination
+   - Agent-by-agent progress (Summarizing → Note Extraction → Fact Checking)
+   - Thought process visualization
+   - Quality metrics dashboard
+4. Review comprehensive results:
+   - Summary with core themes and key discussions
+   - Top 5 takeaways
+   - Notable quotes with timestamps
+   - Topics for tagging
+   - Fact-checked claims with verification status
+   - Quality metrics (overall reliability, research quality)
+5. Download results as JSON or Markdown
 
 ### API Endpoints
 
-#### Analyze Transcript
+#### Analyze Transcript (with SSE streaming)
 
 ```bash
 curl -X POST http://localhost:8000/api/analyze \
@@ -165,12 +321,115 @@ curl -X POST http://localhost:8000/api/analyze/file \
 
 ```bash
 curl http://localhost:8000/api/health
+
+# Response:
+# {
+#   "status": "healthy",
+#   "models_configured": 4,
+#   "search_tools_available": 1
+# }
 ```
 
-#### List Samples
+#### List Sample Transcripts
 
 ```bash
 curl http://localhost:8000/api/samples
+```
+
+#### Get Specific Sample
+
+```bash
+curl http://localhost:8000/api/samples/{sample_id}
+```
+
+## Configuration
+
+### Application Settings (config.yaml)
+
+```yaml
+models:
+  # Supervisor model - Primary: Llama Maverick, Fallback: Claude Haiku
+  model_c:
+    provider: "llama"
+    name: "Llama-4-Maverick-17B-128E-Instruct-FP8"
+    temperature: 0.2
+    max_tokens: 4000
+    fallback:
+      provider: "anthropic"
+      name: "claude-haiku-4-5"
+      temperature: 0.2
+      max_tokens: 4000
+
+  # Fact-checking model - Primary: Llama Maverick, Fallback: Claude Haiku
+  model_d:
+    provider: "llama"
+    name: "Llama-4-Maverick-17B-128E-Instruct-FP8"
+    temperature: 0.1
+    max_tokens: 8000
+    fallback:
+      provider: "anthropic"
+      name: "claude-haiku-4-5"
+      temperature: 0.1
+      max_tokens: 8000
+
+search_tools:
+  tavily:
+    search_depth: "advanced"
+    max_results: 10
+  serper:
+    num_results: 10
+  brave:
+    count: 10
+
+app:
+  debug: false
+  max_retries: 3           # LLM validation retry attempts
+  stream_delay_ms: 100     # SSE event delay
+```
+
+### Customizing Models
+
+You can adjust model parameters in `config.yaml`:
+
+- **temperature**: Lower (0.1-0.3) for more focused outputs, higher (0.7-1.0) for more creative
+- **max_tokens**: Increase for longer outputs (affects cost)
+- **fallback**: Configure different fallback models or disable by removing fallback section
+
+## CloudWatch Logging
+
+All logs are output in JSON format, ready for AWS CloudWatch ingestion:
+
+```json
+{
+  "timestamp": "2025-11-06T10:30:45.123456Z",
+  "level": "INFO",
+  "logger": "app.agents.supervisor",
+  "message": "Tool execution completed successfully",
+  "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "agent": "Summarizing Agent",
+  "tool": "summarize_podcast_tool",
+  "stage": "tool_execution_complete",
+  "duration_ms": 2345,
+  "environment": "production"
+}
+```
+
+### CloudWatch Query Examples
+
+```sql
+# Find all sessions that triggered failover
+fields @timestamp, session_id, agent, failover_triggered, failover_reason
+| filter failover_triggered = true
+| sort @timestamp desc
+
+# Track a specific session
+fields @timestamp, stage, agent, message
+| filter session_id = "your-session-id"
+| sort @timestamp asc
+
+# Monitor performance
+fields @timestamp, agent, duration_ms
+| stats avg(duration_ms) by agent
 ```
 
 ## Project Structure
@@ -178,119 +437,169 @@ curl http://localhost:8000/api/samples
 ```
 podcast-agent/
 ├── app/
-│   ├── __init__.py
-│   ├── main.py                  # FastAPI application
-│   ├── config.py                # Configuration management
+│   ├── main.py                   # FastAPI application with SSE streaming
+│   ├── config.py                 # Configuration management
 │   ├── models/
-│   │   ├── transcript.py        # Input models
-│   │   ├── outputs.py           # Output schemas (Pydantic)
-│   │   └── state.py             # LangGraph state (TypedDict + Pydantic)
+│   │   ├── transcript.py         # Input models
+│   │   ├── outputs.py            # Output schemas (Pydantic)
+│   │   └── state.py              # LangGraph state
 │   ├── agents/
-│   │   ├── graph.py             # LangGraph workflow definition
-│   │   ├── nodes.py             # Agent node implementations
-│   │   ├── tools.py             # Search tools (Tavily, Serper, Brave)
-│   │   └── prompts.py           # Agent prompts
+│   │   ├── graph.py              # LangGraph workflow definition
+│   │   ├── supervisor.py         # Supervisor agent (coordinator)
+│   │   ├── specialist_agents.py  # Summarizing, Notes, Fact-checking
+│   │   ├── supervisor_tools.py   # Tool wrappers for supervisor
+│   │   ├── nodes.py              # LLM creation & failover logic
+│   │   ├── tools.py              # Search tools (Tavily, Serper, Brave)
+│   │   └── prompts.py            # Agent prompts
 │   ├── utils/
-│   │   └── output_writer.py     # JSON/Markdown output generation
+│   │   ├── logger.py             # JSON logging & session tracking
+│   │   └── output_writer.py      # JSON/Markdown output generation
 │   ├── static/
-│   │   └── index.html           # Single-file UI (Tailwind CSS)
-│   └── data/                    # Sample transcripts (user-provided)
-├── output/                      # Generated analysis files (auto-created)
-│   ├── analysis_*.json
-│   └── analysis_*.md
-├── config.yaml                  # Application configuration
-├── pyproject.toml              # Python dependencies (managed with uv)
-├── Dockerfile                   # Docker build configuration
-├── docker-compose.yml          # Local Docker Compose setup
-├── render.yaml                 # Render.com deployment blueprint
-├── .env.example                # Environment variables template
-├── DEPLOY.md                   # Deployment guide
-└── README.md                   # This file
+│   │   └── index.html            # UI (Tailwind CSS)
+│   └── data/                     # Sample transcripts
+├── output/                       # Generated analysis files (auto-created)
+├── config.yaml                   # Application configuration
+├── pyproject.toml               # Python dependencies
+├── requirements.txt             # Compiled dependencies (auto-generated)
+├── Dockerfile                    # Docker build configuration
+├── docker-compose.yml           # Local Docker Compose setup
+├── render.yaml                  # Render.com deployment blueprint
+├── .env.example                 # Environment variables template
+└── README.md                    # This file
 ```
 
-## Output Files
+## Troubleshooting
 
-The application automatically generates two output files for each analysis in the `output/` directory:
+### Mac-Specific Issues
 
-### 1. JSON Output (`analysis_YYYYMMDD_HHMMSS.json`)
+#### Docker Desktop Not Starting
 
-```json
-{
-  "metadata": {
-    "generated_at": "2024-11-05T14:30:45",
-    "critic_iterations": 2,
-    "confidence_in_analysis": 0.87
-  },
-  "summary": {
-    "topics": ["topic1", "topic2"],
-    "key_points": ["point1", "point2"],
-    "final_summary": "Consolidated summary (under 400 characters)"
-  },
-  "notes": "Processing notes from all agents",
-  "fact_check": {
-    "overall_reliability": 0.87,
-    "claims": [
-      {
-        "claim": "Specific claim made in podcast",
-        "status": "verified",
-        "confidence": 0.92,
-        "evidence": "Supporting evidence from search results"
-      }
-    ],
-    "issues_found": ["issue1", "issue2"],
-    "recommendations": ["recommendation1"]
-  }
-}
+```bash
+# Check if Docker is running
+docker info
+
+# If not running, start Docker Desktop from Applications
+open -a Docker
+
+# Wait for Docker to start (Docker icon in menu bar)
+
+# Verify installation
+docker --version
+docker-compose --version
 ```
 
-### 2. Markdown Output (`analysis_YYYYMMDD_HHMMSS.md`)
+#### Port 8000 Already in Use
 
-A human-readable report containing:
-- **Metadata**: Generation time, iterations, overall confidence
-- **Summary**: Consolidated analysis with topics and key points
-- **Processing Notes**: Agent reasoning and decision logs
-- **Fact-Check Results**: Formatted table with claims, status, confidence, and evidence
-- **Recommendations**: Suggested improvements or areas of concern
+```bash
+# Find process using port 8000
+lsof -i :8000
 
-## Logging and Agent Reasoning
+# Kill the process
+kill -9 <PID>
 
-The application provides detailed logging to help you understand the agent decision-making process:
-
-### Console Logs
-
-The application logs show:
-- **Agent Progress**: Each node execution with timing information
-- **Model Invocations**: LLM calls with retry attempts (if validation fails)
-- **Tool Usage**: Search tool invocations and results
-- **State Updates**: Changes to the workflow state
-- **Output Generation**: File paths for generated reports
-
-Example log output:
-```
-INFO:app.agents.nodes:Model A analysis complete: 5 topics, 8 key points identified
-INFO:app.agents.nodes:Model B analysis complete: 4 topics, 7 key points identified
-INFO:app.agents.nodes:Supervisor consolidation complete: 400 char summary, 6 topics, 10 key points
-INFO:app.agents.nodes:Fact-checker invoking search tools for 3 claims
-INFO:app.agents.nodes:Critic iteration 1/2: Overall reliability 0.85, continuing iteration
-INFO:app.main:Output files generated: output/analysis_20241105_143045.json, output/analysis_20241105_143045.md
+# Or use a different port in docker-compose.yml:
+# ports:
+#   - "8080:8000"  # Access at localhost:8080
 ```
 
-### Real-Time Progress Updates
+#### M1/M2 Chip Compatibility
 
-The UI displays detailed progress messages from each agent:
-- Model A & B: Number of topics and key points identified
-- Supervisor: Summary length and consolidated data
-- Fact-Checker: Number of claims verified, tools used
-- Critic: Reliability scores, iteration decisions
+The Docker image is built for `linux/amd64` platform. Docker Desktop handles this automatically, but if you encounter issues:
 
-### Validation Retry Mechanism
+```yaml
+# In docker-compose.yml, add:
+services:
+  app:
+    platform: linux/amd64
+```
 
-When Pydantic validation fails, the system:
-1. Logs the validation error details
-2. Sends error feedback to the LLM
-3. Retries up to 3 times (configurable in `config.yaml`)
-4. Auto-truncates strings if retries fail
-5. Logs each retry attempt with detailed error messages
+#### Python Version Issues (Local Development)
+
+```bash
+# Check Python version
+python3 --version  # Must be 3.12+
+
+# If wrong version, install correct one
+brew install python@3.12
+
+# Use specific version
+python3.12 -m pip install uv
+```
+
+### General Issues
+
+#### API Key Errors
+
+```bash
+# Verify .env file exists
+ls -la .env
+
+# Check if keys are set
+cat .env | grep API_KEY
+
+# Ensure no extra spaces around = sign
+# ✅ CORRECT: ANTHROPIC_API_KEY=sk-ant-...
+# ❌ WRONG:   ANTHROPIC_API_KEY = sk-ant-...
+```
+
+#### Search Tool Errors
+
+```bash
+# Verify at least one search tool key is configured
+cat .env | grep -E '(TAVILY|SERPER|BRAVE)_API_KEY'
+
+# Test search tool directly
+curl "https://api.tavily.com/search" \
+  -H "Content-Type: application/json" \
+  -d '{"api_key":"your-key","query":"test"}'
+```
+
+#### Docker Build Fails
+
+```bash
+# Clear Docker cache
+docker-compose down
+docker system prune -a  # Warning: removes all unused images
+docker-compose build --no-cache
+docker-compose up
+```
+
+#### Out of Memory
+
+```bash
+# Increase Docker Desktop memory allocation:
+# Docker Desktop → Settings → Resources → Memory
+# Recommended: 4GB minimum, 8GB for optimal performance
+```
+
+#### Import Errors (Local Development)
+
+```bash
+# Reinstall dependencies
+uv pip install --force-reinstall -e .
+
+# Or clear cache and reinstall
+rm -rf ~/.cache/uv
+uv pip install -e .
+```
+
+## Performance Metrics
+
+### Expected Processing Times
+
+- Supervisor Coordination: 2-3 seconds
+- Summarizing Agent: 5-8 seconds
+- Note Extraction Agent: 5-8 seconds
+- Fact Checking Agent: 15-25 seconds (with search tools)
+- **Total**: 30-45 seconds per transcript
+
+### Token Usage (Estimated)
+
+- Supervisor: ~2,000 tokens
+- Summarizing Agent: ~3,000 tokens
+- Note Extraction Agent: ~3,000 tokens
+- Fact Checking Agent: ~6,000 tokens (with tool calls)
+- **Total**: ~14,000 tokens per analysis
 
 ## Development
 
@@ -313,10 +622,13 @@ Place JSON files in `app/data/`:
 
 ```bash
 # Install test dependencies
-uv pip install pytest pytest-asyncio
+uv pip install pytest pytest-asyncio httpx
 
 # Run tests
 pytest
+
+# Run with coverage
+pytest --cov=app tests/
 ```
 
 ### Code Quality
@@ -335,35 +647,18 @@ ruff check app/
 mypy app/
 ```
 
-## Performance Metrics
-
-### Expected Processing Times
-
-- Parallel Processing: 5-10 seconds
-- Supervisor Review: 3-5 seconds
-- Fact Checking: 10-20 seconds
-- Critic Loop: 5-10 seconds per iteration
-- **Total**: 30-60 seconds per transcript
-
-### Token Usage (Estimated)
-
-- Models A & B: ~2,000 tokens each
-- Model C: ~4,000 tokens
-- Model D: ~8,000 tokens (with tool calls)
-- **Total**: ~16,000 tokens per analysis
-
 ## Deployment
 
 ### Render.com (Recommended)
 
-Render.com provides easy Docker-based deployment with automatic HTTPS and custom domains.
+Render.com provides easy Docker-based deployment with automatic HTTPS.
 
-#### Quick Deploy to Render
+#### Quick Deploy
 
-1. **Push your code to GitHub**
+1. **Push to GitHub**
    ```bash
    git add .
-   git commit -m "Prepare for Render deployment"
+   git commit -m "Prepare for deployment"
    git push
    ```
 
@@ -373,99 +668,42 @@ Render.com provides easy Docker-based deployment with automatic HTTPS and custom
 
 3. **Deploy via Blueprint**
    - Click "New +" → "Blueprint"
-   - Connect your repository
-   - Render will automatically detect `render.yaml`
+   - Select your repository
+   - Render auto-detects `render.yaml`
    - Click "Apply"
 
-4. **Set Environment Variables**
+4. **Configure Environment Variables**
    - Go to your service in Render Dashboard
    - Navigate to "Environment" tab
    - Add required API keys:
-     - `ANTHROPIC_API_KEY`
-     - `OPENAI_API_KEY`
-     - `TAVILY_API_KEY` (or `SERPER_API_KEY` or `BRAVE_API_KEY`)
-   - Click "Save Changes"
+     ```
+     ANTHROPIC_API_KEY
+     LLAMA_API_KEY
+     TAVILY_API_KEY (or SERPER_API_KEY or BRAVE_API_KEY)
+     ```
+   - Optional: Add LangSmith keys for observability
 
 5. **Access Your App**
-   - First deploy takes ~5-10 minutes
-   - Subsequent deploys are faster (cached layers)
-   - Your app will be available at: `https://your-app-name.onrender.com`
+   - First deploy: ~5-10 minutes
+   - Your app: `https://your-app-name.onrender.com`
+   - Health check: `https://your-app-name.onrender.com/api/health`
 
-#### Free Tier vs Production
+#### Free vs Paid Tiers
 
 **Free Tier:**
-- 750 hours/month free
-- Spins down after 15 minutes of inactivity
-- First request after spin-down takes ~30 seconds
+- 750 hours/month
+- Spins down after 15 min inactivity
+- First request after spin-down: ~30 seconds
 
-**Starter Plan ($7/month):**
+**Starter ($7/mo):**
 ```yaml
 # In render.yaml
-plan: starter  # Doesn't spin down
+plan: starter  # No spin-down
 ```
 
-#### Monitoring
+### AWS App Runner / ECS
 
-- View logs in Render Dashboard
-- Auto-deploys on git push to main branch
-- Health check available at `/api/health`
-
-See [DEPLOY.md](DEPLOY.md) for detailed deployment instructions.
-
-### AWS App Runner
-
-```bash
-# Build and push to ECR
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
-docker build -t podcast-agent .
-docker tag podcast-agent:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/podcast-agent:latest
-docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/podcast-agent:latest
-
-# Deploy via AWS Console or CLI
-```
-
-### Environment Variables in Production
-
-Use secrets management services for API keys:
-
-**Render.com:** Use the Environment tab in the dashboard
-
-**AWS:** Use AWS Secrets Manager
-```bash
-aws secretsmanager create-secret --name podcast-agent/api-keys \
-  --secret-string '{"ANTHROPIC_API_KEY":"...","OPENAI_API_KEY":"..."}'
-```
-
-## Troubleshooting
-
-### Common Issues
-
-**API Key Errors**
-- Verify all required API keys are set in `.env`
-- Check API key validity and rate limits
-
-**Search Tool Errors**
-- Ensure at least one search tool API key is configured
-- Check search tool API quotas
-
-**Docker Build Issues**
-- Clear Docker cache: `docker-compose build --no-cache`
-- Ensure sufficient disk space
-
-**Import Errors**
-- Reinstall dependencies: `uv pip install --force-reinstall -e .`
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests and linting
-5. Submit a pull request
-
-## License
-
-MIT License - See LICENSE file for details
+See [DEPLOY.md](DEPLOY.md) for detailed AWS deployment instructions.
 
 ## Acknowledgments
 
@@ -473,7 +711,12 @@ MIT License - See LICENSE file for details
 - Powered by [FastAPI](https://fastapi.tiangolo.com/)
 - UI styled with [Tailwind CSS](https://tailwindcss.com/)
 - Package management with [uv](https://github.com/astral-sh/uv)
+- Logging with [python-json-logger](https://github.com/madzak/python-json-logger)
 
 ## Support
 
 For issues, questions, or contributions, please open an issue on GitHub.
+
+## License
+
+MIT License - See LICENSE file for details
