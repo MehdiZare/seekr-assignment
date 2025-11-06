@@ -3,6 +3,8 @@
 import asyncio
 import json
 import logging
+import os
+import sys
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -11,7 +13,18 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-# Set up JSON logging for CloudWatch
+# CRITICAL: Load config and set up LangSmith BEFORE any imports that use langsmith
+from app.config import get_config
+
+# Initialize LangSmith tracing by setting environment variables BEFORE langsmith imports
+config = get_config()
+config.setup_langsmith()
+
+# Debug: Confirm LangSmith env vars are set before langsmith imports
+print(f"[DEBUG] LangSmith setup called early - LANGCHAIN_TRACING_V2={os.getenv('LANGCHAIN_TRACING_V2')}, project={os.getenv('LANGCHAIN_PROJECT')}")
+sys.stdout.flush()
+
+# Now set up JSON logging for CloudWatch
 from app.utils.logger import (
     setup_json_logging,
     get_logger,
@@ -28,8 +41,8 @@ logger = get_logger(__name__)
 # Log that JSON logging is active
 logger.info("JSON logging initialized successfully")
 
+# NOW import modules that use langsmith (AFTER environment variables are set)
 from app.agents.graph import stream_analysis
-from app.config import get_config
 from app.models.transcript import TranscriptInput
 
 app = FastAPI(
@@ -44,7 +57,8 @@ async def startup_event():
     """Initialize application on startup."""
     logger.info("Application startup initiated")
 
-    config = get_config()
+    # Note: config is already loaded at module level, and setup_langsmith() was already called
+    # This ensures LangSmith environment variables are set before langsmith module imports
 
     # Log configuration details
     logger.info(
@@ -59,9 +73,7 @@ async def startup_event():
         },
     )
 
-    # Set up LangSmith tracing if enabled
-    config.setup_langsmith()
-
+    # Log LangSmith tracing status (already configured at module load time)
     if config.settings.langsmith_api_key:
         logger.info("LangSmith tracing enabled", extra={"project": config.settings.langsmith_project})
     else:

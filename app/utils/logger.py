@@ -14,64 +14,82 @@ from typing import Any, Dict, Optional
 session_context: ContextVar[Optional[str]] = ContextVar("session_context", default=None)
 
 
-class CloudWatchJsonFormatter(jsonlogger.JsonFormatter):
+class CloudWatchJsonFormatter(logging.Formatter):
     """Custom JSON formatter for CloudWatch with additional context fields."""
 
-    def add_fields(
-        self,
-        log_record: Dict[str, Any],
-        record: logging.LogRecord,
-        message_dict: Dict[str, Any],
-    ) -> None:
-        """Add custom fields to the log record for CloudWatch."""
-        super().add_fields(log_record, record, message_dict)
+    STANDARD_ATTRS = {
+        "name",
+        "msg",
+        "args",
+        "levelname",
+        "levelno",
+        "pathname",
+        "filename",
+        "module",
+        "exc_info",
+        "exc_text",
+        "stack_info",
+        "lineno",
+        "funcName",
+        "created",
+        "msecs",
+        "relativeCreated",
+        "thread",
+        "threadName",
+        "processName",
+        "process",
+        "message",
+    }
 
-        # Add timestamp in ISO format for CloudWatch
-        log_record["timestamp"] = self.formatTime(record, "%Y-%m-%dT%H:%M:%S.%fZ")
+    def format(self, record: logging.LogRecord) -> str:
+        """Format log records as JSON for CloudWatch ingestion."""
+        timestamp = (
+            datetime.fromtimestamp(record.created, tz=timezone.utc)
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z")
+        )
 
-        # Add log level
-        log_record["level"] = record.levelname
+        log_record: Dict[str, Any] = {
+            "timestamp": timestamp,
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "environment": os.getenv("ENVIRONMENT", "development"),
+        }
 
-        # Add logger name
-        log_record["logger"] = record.name
-
-        # Add session ID from context if available
-        session_id = session_context.get()
+        # Prefer explicit session_id on the record, fall back to context.
+        session_id = getattr(record, "session_id", None) or session_context.get()
         if session_id:
             log_record["session_id"] = session_id
 
-        # Add environment info
-        log_record["environment"] = os.getenv("ENVIRONMENT", "development")
+        # Include any custom extra fields that were attached to the record.
+        for key, value in record.__dict__.items():
+            if key in self.STANDARD_ATTRS or key == "session_id":
+                continue
+            if value is None:
+                continue
+            log_record[key] = value
 
-        # Add any extra fields passed via extra parameter
-        if hasattr(record, "session_id"):
-            log_record["session_id"] = record.session_id
-        if hasattr(record, "stage"):
-            log_record["stage"] = record.stage
-        if hasattr(record, "agent"):
-            log_record["agent"] = record.agent
-        if hasattr(record, "tool"):
-            log_record["tool"] = record.tool
-        if hasattr(record, "duration_ms"):
-            log_record["duration_ms"] = record.duration_ms
-        if hasattr(record, "iteration"):
-            log_record["iteration"] = record.iteration
-        if hasattr(record, "max_iterations"):
-            log_record["max_iterations"] = record.max_iterations
-        if hasattr(record, "transcript_length"):
-            log_record["transcript_length"] = record.transcript_length
-        if hasattr(record, "num_claims"):
-            log_record["num_claims"] = record.num_claims
-        if hasattr(record, "num_quotes"):
-            log_record["num_quotes"] = record.num_quotes
-        if hasattr(record, "num_topics"):
-            log_record["num_topics"] = record.num_topics
-        if hasattr(record, "search_results"):
-            log_record["search_results"] = record.search_results
-        if hasattr(record, "verification_status"):
-            log_record["verification_status"] = record.verification_status
-        if hasattr(record, "error_type"):
-            log_record["error_type"] = record.error_type
+        # Add exception information if available.
+        if record.exc_info:
+            log_record["exc_info"] = self.formatException(record.exc_info)
+
+        if record.stack_info:
+            log_record["stack_info"] = self.formatStack(record.stack_info)
+
+        return json.dumps(log_record, default=self._json_default)
+
+    @staticmethod
+    def _json_default(value: Any) -> Any:
+        """Provide JSON-safe fallbacks for non-serializable objects."""
+        if isinstance(value, (set, frozenset)):
+            return list(value)
+        if isinstance(value, os.PathLike):
+            return os.fspath(value)
+        try:
+            return str(value)
+        except Exception:
+            return repr(value)
 
 
 def setup_json_logging(level: str = "INFO") -> None:
@@ -81,32 +99,15 @@ def setup_json_logging(level: str = "INFO") -> None:
     Args:
         level: Logging level (default: INFO)
     """
-    # Get root logger
-    root_logger = logging.getLogger()
-
-    # Remove any existing handlers
-    root_logger.handlers = []
-
-    # Set logging level
     log_level = getattr(logging, level.upper(), logging.INFO)
-    root_logger.setLevel(log_level)
 
-    # Create console handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(log_level)
 
-    # Create JSON formatter
-    formatter = CloudWatchJsonFormatter(
-        "%(timestamp)s %(level)s %(logger)s %(message)s",
-        rename_fields={
-            "levelname": "level",
-            "name": "logger",
-            "asctime": "timestamp",
-        },
-    )
+    console_handler.setFormatter(CloudWatchJsonFormatter())
 
-    console_handler.setFormatter(formatter)
-    root_logger.addHandler(console_handler)
+    logging.basicConfig(level=log_level, handlers=[console_handler], force=True)
+    logging.captureWarnings(True)
 
     # Silence noisy loggers
     logging.getLogger("httpx").setLevel(logging.WARNING)
