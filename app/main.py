@@ -3,6 +3,9 @@
 import asyncio
 import json
 import logging
+import os
+import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -11,36 +14,98 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-from app.agents.graph import stream_analysis
+# CRITICAL: Load config and set up LangSmith BEFORE any imports that use langsmith
 from app.config import get_config
-from app.models.outputs import FinalOutput
+
+# Initialize LangSmith tracing by setting environment variables BEFORE langsmith imports
+config = get_config()
+config.setup_langsmith()
+
+# Debug: Confirm LangSmith env vars are set before langsmith imports
+# Note: JSON logger not yet initialized at this point, but this is captured in lifespan logging
+
+# Now set up JSON logging for CloudWatch
+from app.utils.logger import (
+    setup_json_logging,
+    get_logger,
+    generate_session_id,
+    set_session_context,
+    clear_session_context,
+    TimingContext,
+)
+
+# Initialize JSON logging
+setup_json_logging(level="INFO")
+logger = get_logger(__name__)
+
+# Log that JSON logging is active
+logger.info("JSON logging initialized successfully")
+
+# NOW import modules that use langsmith (AFTER environment variables are set)
+from app.agents.graph import stream_analysis
 from app.models.transcript import TranscriptInput
-from app.utils.output_writer import generate_outputs
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan (startup and shutdown)."""
+    # Re-apply logging configuration in case the host server overrides it (e.g., uvicorn reload)
+    setup_json_logging(level="INFO")
+
+    # Startup: Initialize application
+    logger.info("Application startup initiated")
+
+    # Note: config is already loaded at module level, and setup_langsmith() was already called
+    # This ensures LangSmith environment variables are set before langsmith module imports
+
+    # Log configuration details
+    logger.info(
+        "Configuration loaded",
+        extra={
+            "models_configured": len(config.models),
+            "model_names": list(config.models.keys()),
+            "search_tools_available": {
+                "tavily": config.settings.tavily_api_key is not None,
+                "brave": config.settings.brave_api_key is not None,
+            },
+        },
+    )
+
+    # Log LangSmith tracing status (already configured at module load time)
+    if config.settings.langsmith_api_key:
+        logger.info("LangSmith tracing enabled", extra={"project": config.settings.langsmith_project})
+    else:
+        logger.info("LangSmith tracing disabled (no API key configured)")
+
+    logger.info("Application startup complete - ready to accept requests")
+
+    yield  # Application runs here
+
+    # Shutdown: Clean up resources (if needed)
+    logger.info("Application shutdown")
+
 
 app = FastAPI(
     title="Podcast Agent",
     description="AI-powered podcast analysis with multi-agent workflow",
     version="0.1.0",
+    lifespan=lifespan,
 )
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize application on startup."""
-    config = get_config()
-    # Set up LangSmith tracing if enabled
-    config.setup_langsmith()
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle validation errors with detailed logging."""
-    logger.error(f"Validation error for {request.url}: {exc.errors()}")
-    logger.error(f"Request body: {await request.body()}")
+    request_body = await request.body()
+    logger.error(
+        "Request validation error",
+        extra={
+            "error_type": "RequestValidationError",
+            "url": str(request.url),
+            "errors": exc.errors(),
+            "request_body_size": len(request_body) if request_body else 0,
+        },
+    )
     return JSONResponse(
         status_code=422,
         content={"detail": exc.errors(), "body": exc.body},
@@ -99,147 +164,263 @@ async def get_sample(sample_id: str):
 
 
 async def generate_sse_events(
-    transcript: str, metadata: dict | None = None
+    transcript: str, metadata: dict | None = None, session_id: str | None = None
 ) -> AsyncGenerator[str, None]:
-    """Generate Server-Sent Events for real-time progress updates.
+    """Generate Server-Sent Events for real-time progress updates (NEW SUPERVISOR WORKFLOW).
 
     Args:
         transcript: The podcast transcript
         metadata: Optional metadata
+        session_id: Session ID for tracking this analysis session
 
     Yields:
-        SSE formatted events
+        SSE formatted events with detailed agent progress, reasoning, and tool calls
     """
+    logger.debug(
+        "generate_sse_events entered",
+        extra={
+            "session_id": session_id,
+            "transcript_length": len(transcript)
+        }
+    )
+
     config = get_config()
     stream_delay = config.app_settings.get("stream_delay_ms", 100) / 1000.0
 
-    # Import merge function for state accumulation
-    from app.models.state import merge_model_responses, ModelResponses
+    # Set session context for all logs in this coroutine
+    if session_id:
+        set_session_context(session_id)
 
     try:
+        # Log workflow start with session info
+        logger.debug("About to log analysis workflow started")
+
+        logger.info(
+            "Analysis workflow started",
+            extra={
+                "stage": "started",
+                "transcript_length": len(transcript),
+                "metadata": metadata,
+            },
+        )
+
         # Send initial event
-        yield f"data: {json.dumps({'stage': 'started', 'message': 'Analysis started'})}\n\n"
+        logger.debug("About to send 'started' event")
+        logger.info("SSE: Sending 'started' event", extra={"stage": "started"})
+        yield f"data: {json.dumps({'stage': 'started', 'message': 'Starting podcast analysis workflow...'})}\n\n"
         await asyncio.sleep(stream_delay)
 
         # Track accumulated state throughout streaming
         accumulated_state = {}
+        workflow_start_time = asyncio.get_event_loop().time()
 
-        # Stream the workflow
-        async for event in stream_analysis(transcript, metadata):
-            # event is a dict with node name as key
-            for node_name, node_state in event.items():
-                # Accumulate state updates from this node
-                for key, value in node_state.items():
-                    if key == "model_responses":
-                        # Special handling: merge model_responses using reducer function
-                        existing_responses = accumulated_state.get("model_responses")
-                        accumulated_state["model_responses"] = merge_model_responses(
-                            existing_responses, value
-                        )
-                    elif key == "messages":
-                        # Special handling: append messages instead of replacing
-                        accumulated_state.setdefault("messages", []).extend(value)
-                    else:
-                        # Regular update: overwrite with new value
-                        accumulated_state[key] = value
+        # Map tool names to UI-friendly agent names
+        tool_to_agent_map = {
+            "summarize_podcast_tool": "Summarizing Agent",
+            "extract_notes_tool": "Note Extraction Agent",
+            "fact_check_claims_tool": "Fact Checking Agent",
+        }
 
-                stage = node_state.get("current_stage", "processing")
-                messages = node_state.get("messages", [])
+        # Stream the workflow (receives fine-grained events from astream_events)
+        logger.debug("About to call stream_analysis()")
 
-                # Prepare enhanced SSE data with additional agent reasoning details
-                stage_data = {
-                    "stage": stage,
-                    "node": node_name,
-                    "message": messages[-1] if messages else f"Processing {node_name}",
+        async for event in stream_analysis(transcript, metadata, session_id):
+            event_type = event.get("event")
+            event_name = event.get("name", "")
+            logger.debug(
+                "Received event from stream_analysis",
+                extra={
+                    "event_type": event_type,
+                    "event_name": event_name
+                }
+            )
+
+            # Handle tool start events (agent beginning work)
+            if event_type == "on_tool_start":
+                tool_name = event_name
+                agent_name = tool_to_agent_map.get(tool_name, tool_name)
+
+                # Send supervisor_decision event
+                sse_event = {
+                    "stage": "supervisor_complete",
+                    "node": "supervisor",
+                    "type": "supervisor_decision",
+                    "agent": "Supervisor",
+                    "target_agent": agent_name,
+                    "tool": tool_name,
+                    "message": f"Calling {agent_name}...",
+                    "action": "calling_agent"
                 }
 
-                # Add model_responses data if available (for UI enhancements)
-                if "model_responses" in node_state:
-                    responses = node_state["model_responses"]
-                    try:
-                        # Serialize model_responses for frontend (mode='json' converts datetime to ISO strings)
-                        stage_data["model_data"] = responses.model_dump(mode='json') if hasattr(responses, 'model_dump') else {}
-                    except Exception as e:
-                        logger.warning(f"Failed to serialize model_data for node {node_name}: {e}")
-                        stage_data["model_data"] = {}  # Graceful degradation - continue without this data
-
-                # Add quality metrics if available
-                if "critic_iterations" in node_state:
-                    stage_data["critic_iterations"] = node_state["critic_iterations"]
-                if "should_continue" in node_state:
-                    stage_data["should_continue"] = node_state["should_continue"]
-
-                # Send SSE event with error handling for JSON serialization
                 try:
-                    yield f"data: {json.dumps(stage_data)}\n\n"
+                    logger.info(f"SSE: Sending 'supervisor_decision' event → Calling {agent_name}")
+                    yield f"data: {json.dumps(sse_event)}\n\n"
+                    await asyncio.sleep(stream_delay)
                 except TypeError as e:
-                    logger.error(f"JSON serialization failed for stage_data: {e}")
-                    # Send simplified error-free event
-                    safe_event = {
-                        "stage": stage,
-                        "node": node_name,
-                        "message": messages[-1] if messages else f"Processing {node_name}",
-                        "warning": "Some data could not be displayed"
-                    }
-                    yield f"data: {json.dumps(safe_event)}\n\n"
+                    logger.error(f"JSON serialization failed for supervisor_decision event: {e}")
+                    logger.error(f"Event data: {sse_event}")
 
-                await asyncio.sleep(stream_delay)
+            # Handle tool end events (agent completed work)
+            elif event_type == "on_tool_end":
+                tool_name = event_name
+                agent_name = tool_to_agent_map.get(tool_name, tool_name)
+
+                # Extract result summary from event data
+                event_data = event.get("data", {})
+                output = event_data.get("output", "")
+
+                # Try to parse details from output
+                details = "Completed"
+                if isinstance(output, str) and len(output) > 0:
+                    try:
+                        output_json = json.loads(output)
+                        # Extract key metrics based on agent type
+                        if "summarize" in tool_name and "core_theme" in output_json:
+                            details = f"Core theme: {output_json['core_theme'][:80]}..."
+                        elif "extract_notes" in tool_name:
+                            num_claims = len(output_json.get("factual_statements", []))
+                            num_quotes = len(output_json.get("notable_quotes", []))
+                            num_topics = len(output_json.get("topics", []))
+                            details = f"Extracted {num_claims} factual claims, {num_quotes} quotes, {num_topics} topics"
+                        elif "fact_check" in tool_name:
+                            claims = output_json.get("verified_claims", [])
+                            status_counts = {}
+                            for claim in claims:
+                                status = claim.get("verification_status", "unknown")
+                                status_counts[status] = status_counts.get(status, 0) + 1
+                            details = f"Verified {len(claims)} claims: {status_counts}"
+                    except:
+                        pass
+
+                # Send agent_complete event
+                sse_event = {
+                    "stage": "supervisor_complete",
+                    "node": "supervisor",
+                    "type": "agent_complete",
+                    "agent": agent_name,
+                    "details": details,
+                    "message": f"{agent_name} completed: {details}",
+                    "action": "agent_complete"
+                }
+
+                try:
+                    logger.info(f"SSE: Sending 'agent_complete' event → {agent_name} completed: {details[:60]}...")
+                    yield f"data: {json.dumps(sse_event)}\n\n"
+                    await asyncio.sleep(stream_delay)
+                except TypeError as e:
+                    logger.error(f"JSON serialization failed for agent_complete event: {e}")
+                    logger.error(f"Event data: {sse_event}")
+
+            # Handle workflow completion (final state available)
+            elif event_type == "on_chain_end" and event_name == "LangGraph":
+                # Extract final state from event
+                event_data = event.get("data", {})
+                final_output = event_data.get("output", {})
+
+                # Store in accumulated_state for results processing
+                accumulated_state = final_output
+
+                # Send supervisor reasoning event
+                sse_event = {
+                    "stage": "supervisor_complete",
+                    "node": "supervisor",
+                    "type": "supervisor_reasoning",
+                    "agent": "Supervisor",
+                    "message": "All specialist agents have completed their work.",
+                    "action": "supervisor_thinking"
+                }
+
+                try:
+                    logger.info("SSE: Sending 'supervisor_reasoning' event → All agents completed")
+                    yield f"data: {json.dumps(sse_event)}\n\n"
+                    await asyncio.sleep(stream_delay)
+                except TypeError as e:
+                    logger.error(f"JSON serialization failed for supervisor_reasoning event: {e}")
+                    logger.error(f"Event data: {sse_event}")
 
         # Use accumulated state instead of last event
         final_state = accumulated_state
+        workflow_duration_ms = int((asyncio.get_event_loop().time() - workflow_start_time) * 1000)
 
-        # Get model responses from accumulated final state
-        model_responses = final_state.get("model_responses")
+        # Get supervisor output from accumulated final state (NEW WORKFLOW)
+        supervisor_output = final_state.get("supervisor_output", {})
 
-        # Construct final output with full process details
-        final_output = FinalOutput(
-            summary=model_responses.supervisor if model_responses else None,
-            fact_check=model_responses.fact_check_current if model_responses else None,
-            confidence_in_analysis=model_responses.fact_check_current.overall_reliability
-            if model_responses and model_responses.fact_check_current
-            else 0.0,
-            critic_iterations=final_state.get("critic_iterations", 0),
-            processing_notes="; ".join(final_state.get("messages", [])),
-            model_responses=model_responses,  # Include full process details
+        # Extract specialist agent outputs
+        summary_data = supervisor_output.get("summary", {})
+        notes_data = supervisor_output.get("notes", {})
+        fact_check_data = supervisor_output.get("fact_check", {})
+
+        # Build final result for the UI
+        final_result = {
+            "summary": summary_data,
+            "notes": notes_data,
+            "fact_check": fact_check_data,
+            "metadata": {
+                "total_tool_calls": supervisor_output.get("total_tool_calls", 0),
+                "agents_invoked": supervisor_output.get("agents_invoked", 0),
+                "progress_messages": final_state.get("progress_messages", []),
+            }
+        }
+
+        # Log workflow completion with comprehensive metrics
+        logger.info(
+            "Workflow completed successfully",
+            extra={
+                "stage": "complete",
+                "duration_ms": workflow_duration_ms,
+                "agents_invoked": supervisor_output.get("agents_invoked", 0),
+                "total_tool_calls": supervisor_output.get("total_tool_calls", 0),
+                "num_claims": len(fact_check_data.get("verified_claims", [])) if fact_check_data else 0,
+                "num_quotes": len(notes_data.get("notable_quotes", [])) if notes_data else 0,
+                "num_topics": len(notes_data.get("topics", [])) if notes_data else 0,
+            }
         )
 
-        # Generate output files (JSON and Markdown)
+        # TODO: Generate output files (JSON and Markdown) - currently disabled for new workflow
+        # Will be re-implemented after workflow is stable
         json_filename = None
         md_filename = None
-        try:
-            json_path, md_path = generate_outputs(final_output)
-            json_filename = json_path.name  # Just the filename, not full path
-            md_filename = md_path.name
-            logger.info(f"Output files generated: {json_path}, {md_path}")
-        except Exception as e:
-            logger.error(f"Failed to generate output files: {e}")
 
         # Send final result with error handling
         try:
-            # mode='json' converts datetime to ISO strings
             result_data = {
                 'stage': 'complete',
-                'result': final_output.model_dump(mode='json'),
+                'result': final_result,
                 'output_files': {
                     'json': json_filename,
                     'markdown': md_filename,
                 }
             }
+            logger.info("SSE: Sending 'complete' event with final results")
             yield f"data: {json.dumps(result_data)}\n\n"
         except Exception as e:
             logger.error(f"Failed to serialize final output: {e}")
             import traceback
             logger.error(traceback.format_exc())
             # Send error event
+            logger.info("SSE: Sending 'error' event due to serialization failure")
             yield f"data: {json.dumps({'stage': 'error', 'message': 'Failed to generate final output. Please try again.'})}\n\n"
 
     except Exception as e:
         import traceback
 
-        logger.error(f"Error in analysis workflow: {e}")
-        logger.error(traceback.format_exc())
+        error_msg = f"CRITICAL ERROR in generate_sse_events: {type(e).__name__}: {str(e)}"
+
+        logger.error(
+            "Error in analysis workflow",
+            extra={
+                "stage": "error",
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "traceback": traceback.format_exc(),
+            },
+        )
         error_data = {"stage": "error", "message": str(e), "traceback": traceback.format_exc()}
         yield f"data: {json.dumps(error_data)}\n\n"
+    finally:
+        # Clear session context when done
+        if session_id:
+            clear_session_context()
 
 
 @app.post("/api/analyze")
@@ -252,16 +433,27 @@ async def analyze_transcript(input_data: TranscriptInput):
     Returns:
         StreamingResponse with Server-Sent Events
     """
-    logger.info(f"Starting analysis. Transcript length: {len(input_data.transcript)}")
-    logger.info(f"Metadata: {input_data.metadata}")
+    # Generate unique session ID for this analysis
+    session_id = generate_session_id()
+    set_session_context(session_id)
+
+    logger.info(
+        "Analysis request received",
+        extra={
+            "session_id": session_id,
+            "transcript_length": len(input_data.transcript),
+            "metadata": input_data.metadata,
+        },
+    )
 
     return StreamingResponse(
-        generate_sse_events(input_data.transcript, input_data.metadata),
+        generate_sse_events(input_data.transcript, input_data.metadata, session_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable buffering in nginx
+            "X-Session-ID": session_id,  # Include session ID in response headers
         },
     )
 
@@ -276,6 +468,10 @@ async def analyze_file(file: UploadFile = File(...)):
     Returns:
         StreamingResponse with Server-Sent Events
     """
+    # Generate unique session ID for this analysis
+    session_id = generate_session_id()
+    set_session_context(session_id)
+
     # Read file content
     content = await file.read()
 
@@ -283,25 +479,65 @@ async def analyze_file(file: UploadFile = File(...)):
         # Try to parse as JSON first
         if file.filename.endswith(".json"):
             data = json.loads(content.decode("utf-8"))
-            transcript = data.get("transcript", "")
-            metadata = data.get("metadata", {})
+
+            # Handle transcript array format (like sample files)
+            transcript_data = data.get("transcript", "")
+            if isinstance(transcript_data, list):
+                # Concatenate all text fields from transcript entries
+                transcript = " ".join(
+                    entry.get("text", "") for entry in transcript_data if isinstance(entry, dict)
+                )
+
+                # Extract metadata from JSON file
+                metadata = {
+                    "episode_id": data.get("episode_id", ""),
+                    "title": data.get("title", ""),
+                    "host": data.get("host", ""),
+                    "guests": data.get("guests", []),
+                    "filename": file.filename,
+                }
+            else:
+                # Simple string format
+                transcript = transcript_data
+                metadata = data.get("metadata", {})
+                if "filename" not in metadata:
+                    metadata["filename"] = file.filename
         else:
             # Treat as plain text
             transcript = content.decode("utf-8")
             metadata = {"filename": file.filename}
 
         if not transcript or len(transcript) < 100:
+            logger.warning(
+                "Transcript too short",
+                extra={
+                    "session_id": session_id,
+                    "filename": file.filename,
+                    "transcript_length": len(transcript),
+                },
+            )
             raise HTTPException(
                 status_code=400, detail="Transcript too short (minimum 100 characters)"
             )
 
+        logger.info(
+            "File upload analysis request received",
+            extra={
+                "session_id": session_id,
+                "filename": file.filename,
+                "transcript_length": len(transcript),
+                "metadata": metadata,
+            },
+        )
+
         return StreamingResponse(
-            generate_sse_events(transcript, metadata),
+            generate_sse_events(transcript, metadata, session_id),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
                 "X-Accel-Buffering": "no",
+                "X-Session-ID": session_id,  # Include session ID in response headers
             },
         )
 
@@ -347,13 +583,17 @@ async def download_file(filename: str):
 
     # Validate the file path to prevent directory traversal
     try:
-        file_path = file_path.resolve()
-        output_dir = output_dir.resolve()
+        # Resolve both paths to absolute paths and check containment
+        resolved_file_path = file_path.resolve()
+        resolved_output_dir = output_dir.resolve()
 
-        if not str(file_path).startswith(str(output_dir)):
+        # Use relative_to() which raises ValueError if file_path is not within output_dir
+        try:
+            resolved_file_path.relative_to(resolved_output_dir)
+        except ValueError:
             raise HTTPException(status_code=400, detail="Invalid file path")
 
-        if not file_path.exists():
+        if not resolved_file_path.exists():
             raise HTTPException(status_code=404, detail="File not found")
 
         # Determine media type
@@ -365,7 +605,7 @@ async def download_file(filename: str):
             media_type = 'application/octet-stream'
 
         return FileResponse(
-            path=file_path,
+            path=resolved_file_path,
             media_type=media_type,
             filename=filename,
         )

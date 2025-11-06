@@ -5,8 +5,12 @@ from pathlib import Path
 from typing import Any, Dict
 
 import yaml
+from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Load environment variables from .env file before Settings instantiation
+load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -23,13 +27,13 @@ class Settings(BaseSettings):
     brave_api_key: str | None = Field(None, alias="BRAVE_API_KEY")
 
     # LangSmith Tracing (optional)
-    langsmith_tracing: bool = Field(False, alias="LANGSMITH_TRACING")
+    langsmith_tracing: bool = Field(True, alias="LANGSMITH_TRACING")
     langsmith_endpoint: str = Field(
         "https://api.smith.langchain.com", alias="LANGSMITH_ENDPOINT"
     )
     langsmith_api_key: str | None = Field(None, alias="LANGSMITH_API_KEY")
     langsmith_project: str = Field(
-        "pr-healthy-sustainment-69", alias="LANGSMITH_PROJECT"
+        "pr-weary-stencil-41", alias="LANGSMITH_PROJECT"
     )
 
     model_config = SettingsConfigDict(
@@ -102,7 +106,11 @@ class Config:
             raise ValueError(f"Unknown search tool: {tool}")
 
     def setup_langsmith(self) -> None:
-        """Set up LangSmith tracing if enabled."""
+        """Set up LangSmith tracing if enabled.
+
+        Note: Logging of LangSmith status is handled in the application lifespan
+        to ensure proper JSON logging is active.
+        """
         if self.settings.langsmith_tracing and self.settings.langsmith_api_key:
             os.environ["LANGCHAIN_TRACING_V2"] = "true"
             os.environ["LANGCHAIN_ENDPOINT"] = self.settings.langsmith_endpoint

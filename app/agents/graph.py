@@ -1,149 +1,154 @@
 """LangGraph workflow definition for podcast analysis."""
 
-from typing import Literal
-
 from langgraph.graph import END, StateGraph
 
-from app.agents.nodes import (
-    critic_node,
-    fact_checker_node,
-    model_a_node,
-    model_b_node,
-    supervisor_node,
-)
-from app.config import get_config
-from app.models.state import AgentState, ModelResponses
+# Import supervisor-based workflow
+from app.agents.supervisor import supervisor_node
 
+from app.constants import get_workflow_version
+from app.models.state import AgentState
+from app.utils.logger import get_logger
 
-def should_continue_critic_loop(state: AgentState) -> Literal["fact_checker", "end"]:
-    """Determine whether to continue the critic loop or end.
-
-    Args:
-        state: Current agent state
-
-    Returns:
-        "fact_checker" to re-run fact checking, or "end" to finish
-    """
-    return "fact_checker" if state.get("should_continue", False) else "end"
+logger = get_logger(__name__)
 
 
 def create_workflow() -> StateGraph:
-    """Create and compile the LangGraph workflow.
+    """Create and compile the supervisor-based workflow.
+
+    Simple linear workflow: START → Supervisor → END
+
+    The supervisor intelligently coordinates specialist agents:
+    - Summarizing Agent
+    - Note Extraction Agent
+    - Fact Checking Agent
 
     Returns:
         Compiled StateGraph ready for execution
     """
-    # Create graph
-    workflow = StateGraph(AgentState)
-
-    # Add nodes
-    workflow.add_node("model_a", model_a_node)
-    workflow.add_node("model_b", model_b_node)
-    workflow.add_node("supervisor", supervisor_node)
-    workflow.add_node("fact_checker", fact_checker_node)
-    workflow.add_node("critic", critic_node)
-
-    # Set both models as entry points - they run in TRUE parallel
-    workflow.add_edge("__start__", "model_a")
-    workflow.add_edge("__start__", "model_b")
-
-    # Both models connect to supervisor (supervisor waits for both to complete)
-    workflow.add_edge("model_a", "supervisor")
-    workflow.add_edge("model_b", "supervisor")
-
-    # Supervisor -> Fact Checker
-    workflow.add_edge("supervisor", "fact_checker")
-
-    # Fact Checker -> Critic
-    workflow.add_edge("fact_checker", "critic")
-
-    # Critic decides whether to loop back or end
-    workflow.add_conditional_edges(
-        "critic",
-        should_continue_critic_loop,
-        {
-            "fact_checker": "fact_checker",  # Loop back for improvement
-            "end": END,  # Finish processing
+    logger.info(
+        "Creating supervisor-based workflow graph",
+        extra={
+            "stage": "workflow_creation",
+            "workflow_type": "supervisor-based",
         },
     )
 
+    # Create graph
+    workflow = StateGraph(AgentState)
+
+    # Add supervisor node (the only node in the workflow)
+    workflow.add_node("supervisor", supervisor_node)
+
+    # Simple linear flow: START → Supervisor → END
+    workflow.add_edge("__start__", "supervisor")
+    workflow.add_edge("supervisor", END)
+
     # Compile and return
-    return workflow.compile()
+    logger.info("About to compile workflow graph")
 
-
-async def run_analysis(
-    transcript: str,
-    metadata: dict | None = None,
-    max_critic_iterations: int | None = None,
-) -> AgentState:
-    """Run the complete podcast analysis workflow.
-
-    Args:
-        transcript: The podcast transcript text
-        metadata: Optional metadata about the podcast
-        max_critic_iterations: Maximum number of critic loop iterations (default from config)
-
-    Returns:
-        Final agent state with all results
-    """
-    config = get_config()
-
-    # Get max iterations from config if not provided
-    if max_critic_iterations is None:
-        max_critic_iterations = config.app_settings.get("critic_loops", 2)
-
-    # Initialize state
-    initial_state: AgentState = {
-        "transcript": transcript,
-        "metadata": metadata,
-        "model_responses": ModelResponses(),
-        "critic_iterations": 0,
-        "max_critic_iterations": max_critic_iterations,
-        "current_stage": "initialized",
-        "messages": [],
-        "should_continue": False,
-    }
-
-    # Create and run workflow
-    workflow = create_workflow()
-    final_state = await workflow.ainvoke(initial_state)
-
-    return final_state
+    try:
+        compiled_workflow = workflow.compile()
+        logger.info(
+            "Workflow graph compiled successfully",
+            extra={
+                "stage": "workflow_compiled",
+                "nodes": ["supervisor"],
+            },
+        )
+        return compiled_workflow
+    except Exception as e:
+        logger.error(
+            "CRITICAL: Workflow compilation failed",
+            extra={
+                "error": str(e),
+                "error_type": type(e).__name__,
+            },
+        )
+        raise
 
 
 async def stream_analysis(
     transcript: str,
     metadata: dict | None = None,
-    max_critic_iterations: int | None = None,
+    session_id: str | None = None,
 ):
     """Stream the podcast analysis workflow with real-time updates.
+
+    Uses LangGraph's astream_events() for fine-grained streaming that captures
+    tool calls in real-time, allowing the UI to show progress as agents execute.
 
     Args:
         transcript: The podcast transcript text
         metadata: Optional metadata about the podcast
-        max_critic_iterations: Maximum number of critic loop iterations
+        session_id: Session ID for tracking and logging
 
     Yields:
-        State updates after each node execution
+        Events from the workflow including tool calls, completions, and final state
     """
-    config = get_config()
+    # Set session context early so all logs include session_id
+    if session_id:
+        from app.utils.logger import set_session_context
+        set_session_context(session_id)
 
-    if max_critic_iterations is None:
-        max_critic_iterations = config.app_settings.get("critic_loops", 2)
+    logger.info(
+        "Starting streaming analysis workflow",
+        extra={
+            "stage": "streaming_workflow_start",
+            "transcript_length": len(transcript),
+            "has_metadata": metadata is not None,
+        },
+    )
 
+    # Initialize state with session_id
     initial_state: AgentState = {
         "transcript": transcript,
         "metadata": metadata,
-        "model_responses": ModelResponses(),
-        "critic_iterations": 0,
-        "max_critic_iterations": max_critic_iterations,
+        "session_id": session_id or "",
         "current_stage": "initialized",
-        "messages": [],
-        "should_continue": False,
+        "progress_messages": [],
+        "messages": [],  # LangGraph message history
     }
 
     workflow = create_workflow()
 
-    # Stream events
-    async for event in workflow.astream(initial_state):
-        yield event
+    # Stream fine-grained events (tool calls, LLM calls, etc.)
+    # version="v2" is the current stable event streaming format
+    event_count = 0
+    workflow_version = get_workflow_version()
+
+    try:
+        async for event in workflow.astream_events(initial_state, version=workflow_version):
+            event_type = event.get("event")
+            event_name = event.get("name", "")
+
+            # Filter and yield events we want to send to the UI:
+            # - on_tool_start: When specialist agents begin execution
+            # - on_tool_end: When specialist agents complete
+            # - on_chain_end (name=LangGraph): When workflow completes with final state
+
+            if event_type in ["on_tool_start", "on_tool_end"]:
+                event_count += 1
+                yield event
+            elif event_type == "on_chain_end" and event.get("name") == "LangGraph":
+                # Workflow complete - yield the final state
+                event_count += 1
+                logger.info(
+                    "Streaming analysis workflow completed",
+                    extra={
+                        "stage": "streaming_workflow_complete",
+                        "total_events_streamed": event_count,
+                    },
+                )
+                yield event
+
+    except Exception as e:
+        error_msg = f"CRITICAL ERROR in stream_analysis: {type(e).__name__}: {str(e)}"
+        logger.error(
+            error_msg,
+            extra={
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "stage": "streaming_workflow_error",
+            },
+        )
+        raise

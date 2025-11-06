@@ -1,31 +1,28 @@
 # Model Configuration
 models:
-  # Simpler models for parallel processing
-  model_a:
-    provider: "anthropic"
-    name: "claude-haiku-4-5"
-    temperature: 0.3
-    max_tokens: 2000
-
-  model_b:
+  # Supervisor model - Primary: Llama Maverick, Fallback: OpenAI GPT-5 Nano
+  model_c:
     provider: "llama"
     name: "Llama-4-Maverick-17B-128E-Instruct-FP8"
-    temperature: 0.3
-    max_tokens: 2000
-
-  # Advanced model for supervision (with reasoning)
-  model_c:
-    provider: "anthropic"
-    name: "claude-sonnet-4-5"
     temperature: 0.2
     max_tokens: 4000
+    fallback:
+      provider: "openai"
+      name: "gpt-5-nano-2025-08-07"
+      temperature: 0.2
+      max_tokens: 4000
 
-  # Advanced model for fact-checking (with reasoning)
+  # Fact-checking model - Primary: OpenAI GPT-5 Mini, Fallback: Llama Maverick
   model_d:
-    provider: "llama"
-    name: "Llama-4-Maverick-17B-128E-Instruct-FP8"
+    provider: "openai"
+    name: "gpt-5-mini-2025-08-07"
     temperature: 0.1
     max_tokens: 8000
+    fallback:
+      provider: "llama"
+      name: "Llama-4-Maverick-17B-128E-Instruct-FP8"
+      temperature: 0.1
+      max_tokens: 8000
 
 # Search Tools Configuration
 search_tools:
@@ -45,3 +42,7 @@ app:
   max_retries: 3
   critic_loops: 2
   stream_delay_ms: 100
+  max_supervisor_iterations: 15
+  max_fact_check_iterations: 10
+  url_validation_timeout: 3
+  workflow_version: "v2"

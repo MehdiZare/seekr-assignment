@@ -30,6 +30,8 @@ dependencies = [
     # Utilities
     "python-dotenv>=1.2.1",
     "aiofiles>=25.1.0",
+    "python-json-logger>=4.0.0",
+    "aiohttp>=3.9.0",
 ]
 
 [build-system]

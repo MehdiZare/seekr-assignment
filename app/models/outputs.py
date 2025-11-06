@@ -3,76 +3,91 @@
 from pydantic import BaseModel, Field
 
 
-# Parallel Processing Outputs (Models A & B)
-class ParallelAnalysis(BaseModel):
-    """Output from parallel processing agents (Model A or B)."""
+# ============================================================================
+# SPECIALIST AGENT OUTPUTS (New Architecture)
+# ============================================================================
+
+class SummaryOutput(BaseModel):
+    """Output from the Summarizing Agent."""
 
     summary: str = Field(
         ...,
-        description="Initial summary of the podcast content",
-    )
-    key_points: list[str] = Field(
-        ...,
-        description="List of key points identified in the transcript",
-        min_length=3,
-    )
-    topics: list[str] = Field(
-        ...,
-        description="Main topics discussed",
-        min_length=1,
-    )
-    confidence: float = Field(
-        ...,
-        description="Confidence score in the analysis (0-1)",
-        ge=0.0,
-        le=1.0,
-    )
-
-
-# Supervisor Output (Model C)
-class Quote(BaseModel):
-    """A notable quote from the podcast."""
-
-    text: str = Field(..., description="The quote text")
-    speaker: str | None = Field(None, description="Who said it (if identifiable)")
-    context: str = Field(..., description="Brief context around the quote")
-
-
-class SupervisorOutput(BaseModel):
-    """Consolidated output from the supervisor agent."""
-
-    final_summary: str = Field(
-        ...,
-        description="Comprehensive 200-300 word summary consolidating both analyses",
+        description="Comprehensive 200-300 word summary of the podcast episode",
         min_length=200,
-        max_length=400,
+        max_length=2400,
     )
-    main_topics: list[str] = Field(
+    core_theme: str = Field(
         ...,
-        description="Consolidated list of main topics",
-        min_length=1,
+        description="The central theme or main topic of the episode",
     )
-    key_takeaways: list[str] = Field(
+    key_discussions: list[str] = Field(
         ...,
-        description="Key takeaways from the podcast",
-        min_length=3,
+        description="Main discussion points covered in the episode",
+        min_length=2,
     )
-    notable_quotes: list[Quote] = Field(
-        default_factory=list,
-        description="Notable quotes from the podcast",
-    )
-    claims_to_verify: list[str] = Field(
+    outcomes_and_opinions: list[str] = Field(
         ...,
-        description="Factual claims that need verification",
+        description="Key outcomes, conclusions, or opinions shared",
         min_length=1,
     )
     reasoning: str = Field(
         ...,
-        description="Reasoning behind the consolidation decisions",
+        description="Agent's reasoning process for creating this summary",
     )
 
 
-# Fact Checker Output (Model D)
+class QuoteWithTimestamp(BaseModel):
+    """A notable quote with timestamp from the podcast."""
+
+    text: str = Field(..., description="The quote text")
+    speaker: str | None = Field(None, description="Who said it")
+    timestamp: str | None = Field(None, description="Timestamp in the transcript (e.g., '00:15:23')")
+    context: str = Field(..., description="Brief context around the quote")
+
+
+class FactualStatement(BaseModel):
+    """A factual claim that needs verification."""
+
+    statement: str = Field(..., description="The factual claim or statement")
+    speaker: str | None = Field(None, description="Who made the claim")
+    context: str = Field(..., description="Context around the statement")
+    timestamp: str | None = Field(None, description="When in the episode this was said")
+
+
+class NotesOutput(BaseModel):
+    """Output from the Note Extraction Agent."""
+
+    top_takeaways: list[str] = Field(
+        ...,
+        description="Top 5 key takeaways from the episode",
+        min_length=5,
+        max_length=5,
+    )
+    notable_quotes: list[QuoteWithTimestamp] = Field(
+        ...,
+        description="Notable quotes with timestamps",
+        min_length=1,
+    )
+    topics: list[str] = Field(
+        ...,
+        description="Topics for tagging the podcast (e.g., 'remote work', 'productivity', 'technology')",
+        min_length=3,
+    )
+    factual_statements: list[FactualStatement] = Field(
+        ...,
+        description="Factual statements extracted for verification",
+        min_length=1,
+    )
+    reasoning: str = Field(
+        ...,
+        description="Agent's reasoning process for extracting these notes",
+    )
+
+
+# ============================================================================
+# FACT CHECKING OUTPUTS
+# ============================================================================
+
 class Source(BaseModel):
     """A source used for verification."""
 
@@ -92,7 +107,7 @@ class VerifiedClaim(BaseModel):
     claim: str = Field(..., description="The original claim")
     verification_status: str = Field(
         ...,
-        description="Status: 'verified', 'partially_verified', 'unverified', or 'false'",
+        description="Status: 'fact-checked' (verified with credible sources), 'unverified' (no credible sources), or 'declined' (contradicted by credible evidence)",
     )
     confidence: float = Field(
         ...,
@@ -102,11 +117,11 @@ class VerifiedClaim(BaseModel):
     )
     sources: list[Source] = Field(
         default_factory=list,
-        description="Sources used for verification",
+        description="Sources used for verification (credible websites)",
     )
     reasoning: str = Field(
         ...,
-        description="Reasoning behind the verification result",
+        description="Reasoning behind the verification result, including search process",
     )
     additional_context: str | None = Field(
         None,
@@ -119,8 +134,8 @@ class FactCheckOutput(BaseModel):
 
     verified_claims: list[VerifiedClaim] = Field(
         ...,
-        description="All verified claims",
-        min_length=1,
+        description="All verified claims (empty if no factual statements to verify)",
+        min_length=0,
     )
     overall_reliability: float = Field(
         ...,
@@ -137,65 +152,4 @@ class FactCheckOutput(BaseModel):
     reasoning: str = Field(
         ...,
         description="Overall reasoning about the fact-checking process",
-    )
-
-
-# Critic Output
-class CriticFeedback(BaseModel):
-    """Feedback from the critic agent."""
-
-    research_is_sufficient: bool = Field(
-        ...,
-        description="Whether the research quality is sufficient",
-    )
-    missing_verifications: list[str] = Field(
-        default_factory=list,
-        description="Claims that need better verification",
-    )
-    suggested_improvements: list[str] = Field(
-        default_factory=list,
-        description="Specific improvements to make",
-    )
-    quality_score: float = Field(
-        ...,
-        description="Overall quality score (0-1)",
-        ge=0.0,
-        le=1.0,
-    )
-    reasoning: str = Field(
-        ...,
-        description="Reasoning behind the feedback",
-    )
-
-
-# Final Output
-class FinalOutput(BaseModel):
-    """Final output combining all stages."""
-
-    summary: SupervisorOutput = Field(
-        ...,
-        description="Consolidated summary from supervisor",
-    )
-    fact_check: FactCheckOutput = Field(
-        ...,
-        description="Fact-checking results",
-    )
-    confidence_in_analysis: float = Field(
-        ...,
-        description="Overall confidence in the complete analysis (0-1)",
-        ge=0.0,
-        le=1.0,
-    )
-    critic_iterations: int = Field(
-        ...,
-        description="Number of critic loop iterations performed",
-        ge=0,
-    )
-    processing_notes: str = Field(
-        default="",
-        description="Any additional notes about the processing",
-    )
-    model_responses: "ModelResponses | None" = Field(
-        None,
-        description="Full model responses for detailed process tracking",
     )

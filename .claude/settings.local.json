@@ -2,7 +2,26 @@
   "permissions": {
     "allow": [
       "Bash(find:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(source .venv/bin/activate)",
+      "Bash(python:*)",
+      "Bash(python3.12 -m venv:*)",
+      "Bash(curl:*)",
+      "Bash(timeout 30 python:*)",
+      "Bash(pkill:*)",
+      "Bash(uvicorn:*)",
+      "Bash(tee:*)",
+      "Bash(killall:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill -9)",
+      "Bash(timeout 20 python:*)",
+      "Bash(python3:*)",
+      "WebFetch(domain:docs.docker.com)",
+      "Bash(tree:*)",
+      "Bash(test:*)",
+      "WebFetch(domain:docs.langchain.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:help.openai.com)"
     ],
     "deny": [],
     "ask": []
