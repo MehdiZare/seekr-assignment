@@ -26,9 +26,9 @@ A sophisticated multi-agent system built with LangGraph that analyzes podcast tr
 flowchart TD
     Start([START: Podcast Transcript]) --> Supervisor{Supervisor Agent<br/>Editor-in-Chief<br/>Analyzes & Decides}
 
-    Supervisor -->|Calls as needed| Summarizer[Summarizing Agent<br/>📝 Create Summary]
-    Supervisor -->|Calls as needed| NoteExtractor[Note Extraction Agent<br/>🔍 Extract Key Info]
-    Supervisor -->|Calls as needed| FactChecker[Fact Checking Agent<br/>✓ Verify Claims]
+    Supervisor -->|Calls as needed| Summarizer[Summarizing Agent<br/>Create Summary]
+    Supervisor -->|Calls as needed| NoteExtractor[Note Extraction Agent<br/>Extract Key Info]
+    Supervisor -->|Calls as needed| FactChecker[Fact Checking Agent<br/>Verify Claims]
 
     Summarizer -->|Returns Results| Supervisor
     NoteExtractor -->|Returns Results| Supervisor
@@ -79,11 +79,25 @@ All agents use **Llama Maverick** as primary with automatic failover to **Claude
 
 ### Search Tools
 
-- **Tavily**: Advanced search with comprehensive filtering
-- **Google Serper**: Current web search results
-- **Brave Search**: Privacy-focused search engine
+- **[Tavily](https://tavily.com/)**: Advanced search with comprehensive filtering
+  - [API Documentation](https://docs.tavily.com/)
+  - [Python SDK](https://github.com/tavily-ai/tavily-python)
+- **[Google Serper](https://serper.dev/)**: Current web search results
+  - [LangChain Integration](https://python.langchain.com/docs/integrations/providers/google_serper/)
+- **[Brave Search](https://brave.com/search/api/)**: Privacy-focused search engine
 
 *(At least one search tool API key required)*
+
+### Key Dependencies
+
+This project is built with industry-standard tools and frameworks:
+
+- **[LangGraph](https://github.com/langchain-ai/langgraph)** - Multi-agent orchestration framework
+- **[LangChain](https://python.langchain.com/)** - LLM application framework
+- **[FastAPI](https://fastapi.tiangolo.com/)** - Modern Python web framework
+- **[Pydantic](https://docs.pydantic.dev/)** - Data validation using Python type annotations
+- **[uv](https://github.com/astral-sh/uv)** - Fast Python package manager
+- **[Tailwind CSS](https://tailwindcss.com/)** - Utility-first CSS framework for UI
 
 ## Quick Start (macOS)
 
@@ -280,33 +294,109 @@ docker-compose up
 
 ### Option B: Local Development
 
-#### Install Python 3.12+
-```bash
-brew install python@3.12
-```
+#### 1. Install pyenv (Python Version Manager)
 
-#### Install uv (Fast Python Package Manager)
+[pyenv](https://github.com/pyenv/pyenv) allows you to easily install and switch between multiple Python versions.
+
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# Install pyenv via Homebrew
+brew install pyenv
+
+# Add pyenv to your shell (for zsh - default on macOS)
+echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.zshrc
+echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.zshrc
+echo 'eval "$(pyenv init --path)"' >> ~/.zshrc
+echo 'eval "$(pyenv init -)"' >> ~/.zshrc
+
+# For bash, use ~/.bash_profile or ~/.bashrc instead
 # Restart your terminal or run:
-source $HOME/.cargo/env
+source ~/.zshrc  # or source ~/.bash_profile
 ```
 
-#### Install Dependencies and Run
+#### 2. Install Python 3.12+
+
+```bash
+# Install Python 3.12 (or latest 3.12.x)
+pyenv install 3.12.0
+
+# Verify installation
+pyenv versions
+```
+
+#### 3. Clone Repository and Set Python Version
+
 ```bash
 # Clone repository
 git clone https://github.com/MehdiZare/seekr-assignment.git
 cd assignment
 
-# Configure environment variables
+# Set local Python version for this project
+pyenv local 3.12.0
+
+# Verify Python version
+python --version  # Should show Python 3.12.0
+```
+
+#### 4. Create Virtual Environment
+
+```bash
+# Create a virtual environment
+python -m venv .venv
+
+# Activate the virtual environment
+source .venv/bin/activate  # On macOS/Linux
+
+# Your prompt should now show (.venv) prefix
+# To deactivate later, simply run: deactivate
+```
+
+#### 5. Install uv (Fast Python Package Manager)
+
+```bash
+# With virtual environment activated
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Restart your terminal or run:
+source $HOME/.cargo/env
+
+# Verify installation
+uv --version
+```
+
+#### 6. Install Dependencies
+
+```bash
+# Ensure virtual environment is activated (.venv prefix in prompt)
+# Configure environment variables first
 cp .env.example .env
 nano .env  # Add your API keys
 
-# Install dependencies
+# Install dependencies using uv
 uv pip install -e .
 
-# Run the application
+# This installs all dependencies from pyproject.toml
+```
+
+#### 7. Run the Application
+
+```bash
+# With virtual environment activated
 uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# Application will be available at http://localhost:8000
+```
+
+#### 8. Development Workflow
+
+```bash
+# Always activate virtual environment before working
+source .venv/bin/activate
+
+# Run the application
+uvicorn app.main:app --reload  # --reload for auto-restart on code changes
+
+# When done, deactivate virtual environment
+deactivate
 ```
 
 ## Usage
@@ -473,38 +563,65 @@ fields @timestamp, agent, duration_ms
 ## Project Structure
 
 ```
-podcast-agent/
-├── app/
+seekr-assignment/
+├── app/                          # Main application package
+│   ├── __init__.py
 │   ├── main.py                   # FastAPI application with SSE streaming
 │   ├── config.py                 # Configuration management
-│   ├── models/
-│   │   ├── transcript.py         # Input models
-│   │   ├── outputs.py            # Output schemas (Pydantic)
-│   │   └── state.py              # LangGraph state
-│   ├── agents/
+│   ├── constants.py              # Application constants
+│   ├── agents/                   # Agent implementations
+│   │   ├── __init__.py
 │   │   ├── graph.py              # LangGraph workflow definition
+│   │   ├── nodes.py              # LLM creation & failover logic
 │   │   ├── supervisor.py         # Supervisor agent (coordinator)
 │   │   ├── specialist_agents.py  # Summarizing, Notes, Fact-checking
 │   │   ├── supervisor_tools.py   # Tool wrappers for supervisor
-│   │   ├── nodes.py              # LLM creation & failover logic
-│   │   ├── tools.py              # Search tools (Tavily, Serper, Brave)
-│   │   └── prompts.py            # Agent prompts
-│   ├── utils/
-│   │   ├── logger.py             # JSON logging & session tracking
-│   │   └── output_writer.py      # JSON/Markdown output generation
-│   ├── static/
+│   │   └── tools.py              # Search tools (Tavily, Serper, Brave)
+│   ├── models/                   # Data models
+│   │   ├── __init__.py
+│   │   ├── outputs.py            # Output schemas (Pydantic)
+│   │   ├── state.py              # LangGraph state
+│   │   └── transcript.py         # Input models
+│   ├── utils/                    # Utility modules
+│   │   ├── __init__.py
+│   │   └── logger.py             # JSON logging & session tracking
+│   ├── static/                   # Static files
 │   │   └── index.html            # UI (Tailwind CSS)
 │   └── data/                     # Sample transcripts
-├── output/                       # Generated analysis files (auto-created)
+│       ├── ep001_remote_work.json
+│       ├── ep002_ai_healthcare.json
+│       └── ep003_bootstrapping.json
+├── .benchmarks/                  # Benchmark results (gitignored)
+├── .venv/                        # Python virtual environment (gitignored)
+├── output/                       # Generated analysis files (auto-created, gitignored)
+├── test_realtime_streaming.py    # Test: Real-time streaming functionality
+├── test_ui_fix.py               # Test: UI fixes
+├── test_workflow.py             # Test: Workflow functionality
 ├── config.yaml                   # Application configuration
-├── pyproject.toml               # Python dependencies
-├── requirements.txt             # Compiled dependencies (auto-generated)
-├── Dockerfile                    # Docker build configuration
+├── pyproject.toml               # Python dependencies & project metadata
+├── requirements.txt             # Compiled dependencies (auto-generated by uv)
+├── uv.lock                      # uv lock file for deterministic builds
+├── runtime.txt                  # Python version for deployment
+├── Dockerfile                    # Docker container definition
 ├── docker-compose.yml           # Local Docker Compose setup
 ├── render.yaml                  # Render.com deployment blueprint
 ├── .env.example                 # Environment variables template
+├── .gitignore                   # Git ignore rules
+├── DEPLOYMENT.md                # Detailed deployment documentation
 └── README.md                    # This file
 ```
+
+**Key Directories:**
+
+- **`app/`** - Main application code
+  - **`agents/`** - Multi-agent system implementation (supervisor + specialists)
+  - **`models/`** - Pydantic models for data validation
+  - **`utils/`** - Logging and utility functions
+  - **`static/`** - Frontend UI
+  - **`data/`** - Sample podcast transcripts
+- **`.venv/`** - Python virtual environment (created during local setup)
+- **`output/`** - Auto-generated analysis results (JSON & Markdown)
+- **Test files** - Root-level test files for different components
 
 ## Troubleshooting
 
@@ -540,9 +657,9 @@ kill -9 <PID>
 #   - "8080:8000"  # Access at localhost:8080
 ```
 
-#### M1/M2 Chip Compatibility
+#### M1/M2/M3 Apple Silicon Compatibility
 
-The Docker image is built for `linux/amd64` platform. Docker Desktop handles this automatically, but if you encounter issues:
+**Docker**: The Docker image is built for `linux/amd64` platform. Docker Desktop on Apple Silicon (M1/M2/M3) handles this automatically via Rosetta 2 translation, but if you encounter issues:
 
 ```yaml
 # In docker-compose.yml, add:
@@ -551,17 +668,36 @@ services:
     platform: linux/amd64
 ```
 
+**Local Development**: pyenv works natively on Apple Silicon. When installing Python, pyenv will automatically build the appropriate ARM64 version for your chip.
+
+```bash
+# Check your architecture
+uname -m  # Should show "arm64" on Apple Silicon
+
+# Check Python version and architecture
+python --version  # Should show Python 3.12.x
+python -c "import platform; print(platform.machine())"  # Should show "arm64"
+```
+
 #### Python Version Issues (Local Development)
 
 ```bash
-# Check Python version
-python3 --version  # Must be 3.12+
+# Check current Python version
+python --version
 
-# If wrong version, install correct one
-brew install python@3.12
+# If using wrong version, set with pyenv
+pyenv local 3.12.0
 
-# Use specific version
-python3.12 -m pip install uv
+# Verify pyenv is working
+pyenv which python
+
+# If pyenv is not recognized, add to shell
+echo 'eval "$(pyenv init -)"' >> ~/.zshrc
+source ~/.zshrc
+
+# Reinstall Python if needed
+pyenv install --list | grep 3.12  # See available versions
+pyenv install 3.12.0
 ```
 
 ### General Issues
@@ -658,16 +794,37 @@ Place JSON files in `app/data/`:
 
 ### Running Tests
 
+The project includes three test files in the root directory:
+
+- **`test_workflow.py`** - Tests the core workflow and agent coordination
+- **`test_realtime_streaming.py`** - Tests real-time SSE streaming functionality
+- **`test_ui_fix.py`** - Tests UI-related fixes and behavior
+
 ```bash
+# Activate virtual environment first
+source .venv/bin/activate
+
 # Install test dependencies
 uv pip install pytest pytest-asyncio httpx
 
-# Run tests
+# Run all tests
 pytest
 
-# Run with coverage
-pytest --cov=app tests/
+# Run a specific test file
+pytest test_workflow.py
+
+# Run tests with verbose output
+pytest -v
+
+# Run tests with coverage
+pytest --cov=app
+
+# Generate HTML coverage report
+pytest --cov=app --cov-report=html
+# View report: open htmlcov/index.html
 ```
+
+**Note**: Tests are currently in the project root. For better organization, consider moving them to a `tests/` directory in the future.
 
 ### Code Quality
 
@@ -741,7 +898,7 @@ plan: starter  # No spin-down
 
 ### AWS App Runner / ECS
 
-See [DEPLOY.md](DEPLOY.md) for detailed AWS deployment instructions.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed AWS deployment instructions.
 
 ## Acknowledgments
 
