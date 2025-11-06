@@ -130,6 +130,23 @@ def fact_check_claims_tool(factual_statements_json: str, context: str) -> str:
 
         logger.info(f"Parsed {len(factual_statements)} factual statements for verification")
 
+        # Handle empty list - return default message when no facts to verify
+        if len(factual_statements) == 0:
+            logger.info("No factual statements to verify - returning default response")
+            return json.dumps({
+                "verified_claims": [{
+                    "claim": "No factual statements found to verify",
+                    "verification_status": "unverified",
+                    "confidence": 1.0,
+                    "sources": [],
+                    "reasoning": "No factual statements were extracted from the podcast episode for verification.",
+                    "additional_context": "This episode may be primarily opinion-based, conversational, or does not contain specific verifiable claims."
+                }],
+                "overall_reliability": 1.0,
+                "research_quality": 1.0,
+                "reasoning": "No factual statements were provided for verification. This indicates that the podcast content is primarily opinion-based or conversational without specific verifiable claims."
+            }, indent=2)
+
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse factual_statements_json: {e}")
         return json.dumps({

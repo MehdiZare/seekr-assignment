@@ -134,8 +134,8 @@ class FactCheckOutput(BaseModel):
 
     verified_claims: list[VerifiedClaim] = Field(
         ...,
-        description="All verified claims",
-        min_length=1,
+        description="All verified claims (empty if no factual statements to verify)",
+        min_length=0,
     )
     overall_reliability: float = Field(
         ...,

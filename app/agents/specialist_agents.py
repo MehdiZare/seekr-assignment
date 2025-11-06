@@ -333,6 +333,9 @@ def fact_check_claims(
 ) -> dict[str, Any]:
     """Fact Checking Agent: Verify factual claims using search tools.
 
+    Note: Empty lists are handled gracefully by the tool wrapper (fact_check_claims_tool),
+    which returns a default response before calling this function.
+
     Args:
         factual_statements: List of FactualStatement objects to verify
         context: Context/summary for better search queries
