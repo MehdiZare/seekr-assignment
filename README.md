@@ -109,7 +109,7 @@ All agents use **Llama Maverick** as primary with automatic failover to **Claude
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/MehdiZare/seekr-assignment.git
    cd assignment
    ```
 
@@ -245,7 +245,7 @@ Open Docker Desktop from Applications and wait for it to start (Docker icon appe
 #### Build and Run
 ```bash
 # Clone repository
-git clone <repository-url>
+git clone https://github.com/MehdiZare/seekr-assignment.git
 cd assignment
 
 # Configure environment variables
@@ -295,7 +295,7 @@ source $HOME/.cargo/env
 #### Install Dependencies and Run
 ```bash
 # Clone repository
-git clone <repository-url>
+git clone https://github.com/MehdiZare/seekr-assignment.git
 cd assignment
 
 # Configure environment variables
@@ -753,8 +753,16 @@ See [DEPLOY.md](DEPLOY.md) for detailed AWS deployment instructions.
 
 ## Support
 
-For issues, questions, or contributions, please open an issue on GitHub.
+For issues, questions, or contributions, please open an issue on the [GitHub repository](https://github.com/MehdiZare/seekr-assignment/issues).
 
 ## License
 
-MIT License - See LICENSE file for details
+MIT License
+
+Copyright (c) 2025 Mehdi Zare
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
