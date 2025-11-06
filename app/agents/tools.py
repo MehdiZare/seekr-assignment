@@ -30,7 +30,8 @@ def create_search_tools() -> list[Tool]:
         tavily_tool = TavilySearch(
             max_results=tavily_config.get("max_results", 10),
             search_depth=tavily_config.get("search_depth", "advanced"),
-            api_wrapper=tavily_api_wrapper
+            api_wrapper=tavily_api_wrapper,
+            name="tavily_search"  # Explicitly set name to prevent duplication bugs
         )
         tools.append(tavily_tool)
 

@@ -116,11 +116,28 @@ def _create_llm_with_fallback(model_key: str) -> tuple[ChatAnthropic | ChatOpenA
 
 
 @traceable(name="parse_json_response")
-def _parse_json_response(response: str, model_class: type) -> Any:
-    """Parse JSON response and validate with Pydantic model."""
+def _parse_json_response(response: str | list, model_class: type) -> Any:
+    """Parse JSON response and validate with Pydantic model.
+
+    Handles different response formats from different LLM providers:
+    - Anthropic returns list: [{'text': '...', 'type': 'text', 'index': 0}]
+    - OpenAI returns string: "some json content"
+    """
     original_response = response
 
     try:
+        # Handle different response formats from different LLM providers
+        if isinstance(response, list):
+            # Extract text content from Anthropic's list format
+            if len(response) > 0 and isinstance(response[0], dict):
+                response = response[0].get('text', '')
+            else:
+                response = str(response)
+
+        # Ensure we have a string now
+        if not isinstance(response, str):
+            response = str(response)
+
         # Try to extract JSON from markdown code blocks if present
         if "```json" in response:
             response = response.split("```json")[1].split("```")[0].strip()
